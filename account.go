@@ -10,8 +10,6 @@ import (
 	gql "github.com/hasura/go-graphql-client"
 )
 
-const ()
-
 // AccountManagerConfig config options for AccountManager
 type AccountManagerConfig struct {
 	FirebaseApp     *firebase.App
