@@ -1,0 +1,8 @@
+# JetBrains IDE
+.idea/
+
+# VsCode IDE
+.history/
+
+# Log files
+*.log
