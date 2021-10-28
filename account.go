@@ -60,10 +60,11 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 	}
 
 	return &AccountManager{
-		providers:    providers,
-		gqlClient:    config.GQLClient,
-		providerType: config.DefaultProvider,
-		defaultRole:  config.DefaultRole,
+		providers:       providers,
+		gqlClient:       config.GQLClient,
+		providerType:    config.DefaultProvider,
+		defaultRole:     config.DefaultRole,
+		createFromToken: config.CreateFromToken,
 	}, nil
 }
 
