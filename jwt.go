@@ -64,7 +64,7 @@ func (ja JWTAuth) GetName() AuthProviderType {
 	return AuthJWT
 }
 
-func (ja *JWTAuth) CreateUser(input CreateAccountInput) (*Account, error) {
+func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
 	if input.Password == "" {
 		return nil, errors.New(ErrCodePasswordRequired)
 	}
@@ -301,4 +301,8 @@ func (ja *JWTAuth) VerifyPassword(providerUserId string, password string) error 
 	}, password)
 
 	return err
+}
+
+func (ja *JWTAuth) DeleteUser(uid string) error {
+	return nil
 }

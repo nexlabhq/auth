@@ -20,16 +20,19 @@ func (fa FirebaseAuth) GetName() AuthProviderType {
 	return AuthFirebase
 }
 
-func (fa *FirebaseAuth) CreateUser(input CreateAccountInput) (*Account, error) {
+func (fa *FirebaseAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
 
 	if err != nil {
 		return nil, err
 	}
-	params := (&auth.UserToCreate{}).
-		Email(input.Email).
-		EmailVerified(input.Verified)
+	params := (&auth.UserToCreate{})
+
+	if input.EmailEnabled {
+		params = params.Email(input.Email).
+			EmailVerified(input.Verified)
+	}
 
 	if input.DisplayName != "" {
 		params = params.DisplayName(input.DisplayName)
@@ -167,8 +170,37 @@ func (fa *FirebaseAuth) ChangePassword(uid string, newPassword string) error {
 	return nil
 }
 
+func (fa *FirebaseAuth) DeleteUser(uid string) error {
+	ctx := context.Background()
+	authClient, err := fa.App.Auth(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = authClient.DeleteUser(ctx, uid)
+	if err == nil || auth.IsUserNotFound(err) {
+		return nil
+	}
+
+	return err
+}
+
 func (fa *FirebaseAuth) EncodeToken(uid string) (*AccessToken, error) {
-	return nil, errors.New(ErrCodeUnsupported)
+	ctx := context.Background()
+	authClient, err := fa.App.Auth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tok, err := authClient.CustomToken(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AccessToken{
+		TokenType:   string(AuthFirebase),
+		AccessToken: tok,
+	}, nil
 }
 
 func (fa *FirebaseAuth) SignInWithEmailAndPassword(email string, password string) (*Account, error) {

@@ -108,7 +108,8 @@ type AccessToken struct {
 
 type AuthProvider interface {
 	GetName() AuthProviderType
-	CreateUser(CreateAccountInput) (*Account, error)
+	CreateUser(*CreateAccountInput) (*Account, error)
+	DeleteUser(id string) error
 	GetUserByID(id string) (*Account, error)
 	GetUserByEmail(email string) (*Account, error)
 	SetCustomClaims(uid string, input map[string]interface{}) error

@@ -100,7 +100,7 @@ func (am AccountManager) getCurrentProvider() AuthProvider {
 }
 
 // CreateProviderAccount create account with provider
-func (am *AccountManager) CreateProviderAccount(input CreateAccountInput) (*Account, error) {
+func (am *AccountManager) CreateProviderAccount(input *CreateAccountInput) (*Account, error) {
 	return am.getCurrentProvider().CreateUser(input)
 }
 
@@ -109,8 +109,8 @@ func (am *AccountManager) ChangeProviderPassword(uid string, newPassword string)
 	return am.getCurrentProvider().ChangePassword(uid, newPassword)
 }
 
-// GetAccountByEmail find account by email
-func (am *AccountManager) GetAccountByEmail(email string) (*Account, error) {
+// FindAccountByProviderEmail find account by email
+func (am *AccountManager) FindAccountByProviderEmail(email string) (*Account, error) {
 
 	u, err := am.getCurrentProvider().GetUserByEmail(email)
 	if err != nil {
@@ -131,8 +131,64 @@ func (am *AccountManager) GetAccountByEmail(email string) (*Account, error) {
 	return u, nil
 }
 
+// FindAccountByID find account by id
+func (am *AccountManager) FindAccountByID(id string) (*Account, error) {
+	return am.FindOne(account_bool_exp{
+		"id": map[string]string{
+			"_eq": id,
+		},
+	})
+}
+
+// FindAccountByEmail find account by id
+func (am *AccountManager) FindAccountByEmail(id string) (*Account, error) {
+	return am.FindOne(account_bool_exp{
+		"email": map[string]string{
+			"_eq": id,
+		},
+	})
+}
+
+func (am *AccountManager) FindAll(where map[string]interface{}) ([]Account, error) {
+	var query struct {
+		Account []Account `graphql:"account(where: $where)"`
+	}
+
+	variables := map[string]interface{}{
+		"where": account_bool_exp(where),
+	}
+
+	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccounts"))
+	if err != nil {
+		return nil, err
+	}
+
+	return query.Account, nil
+}
+
+func (am *AccountManager) FindOne(where map[string]interface{}) (*Account, error) {
+	var query struct {
+		Account []Account `graphql:"account(where: $where, limit: 1)"`
+	}
+
+	variables := map[string]interface{}{
+		"where": account_bool_exp(where),
+	}
+
+	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccounts"))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(query.Account) == 0 {
+		return nil, nil
+	}
+
+	return &query.Account[0], nil
+}
+
 // CreateAccountWithProvider get or create account with provider
-func (am *AccountManager) CreateAccountWithProvider(input CreateAccountInput) (*Account, error) {
+func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (*Account, error) {
 
 	ctx := context.Background()
 
@@ -242,11 +298,12 @@ func (am *AccountManager) CreateAccountWithProvider(input CreateAccountInput) (*
 		accInsertInput["phone_number"] = input.PhoneNumber
 	}
 
-	_, err = am.InsertAccount(accInsertInput)
+	uid, err := am.InsertAccount(accInsertInput)
 	if err != nil {
 		return nil, err
 	}
 
+	acc.ID = uid
 	return acc, nil
 
 }
@@ -346,14 +403,19 @@ func (am *AccountManager) VerifyToken(token string) (*Account, error) {
 
 	// allow create account with provider info
 	acc, err = am.getCurrentProvider().GetUserByID(provider.ProviderUserID)
-	if err != nil || acc.ID != "" {
+	if err != nil || (acc != nil && acc.ID != "") {
 		return acc, err
+	} else if acc == nil {
+		return nil, errors.New(ErrCodeAccountNotFound)
 	}
 
 	acc.ID = genID()
 	accInsertInput := map[string]interface{}{
 		"id":            acc.ID,
 		"display_name":  acc.DisplayName,
+		"email":         acc.Email,
+		"phone_code":    acc.PhoneCode,
+		"phone_number":  acc.PhoneNumber,
 		"role":          am.defaultRole,
 		"verified":      acc.Verified,
 		"email_enabled": acc.Email != "",
@@ -368,7 +430,7 @@ func (am *AccountManager) VerifyToken(token string) (*Account, error) {
 		return nil, err
 	}
 
-	return nil, nil
+	return acc, nil
 }
 
 func (am *AccountManager) findAccountByProviderUser(userId string) (*Account, error) {
@@ -510,4 +572,50 @@ func (am *AccountManager) ChangeAllProvidersPassword(providers []AccountProvider
 		}
 	}
 	return nil
+}
+
+// DeleteUser delete user by identity
+func (am *AccountManager) DeleteUser(id string) error {
+	var query struct {
+		AccountProviders []AccountProvider `graphql:"account_provider(where: $where)"`
+	}
+
+	queryVariables := map[string]interface{}{
+		"where": account_provider_bool_exp{
+			"account_id": map[string]string{
+				"_eq": id,
+			},
+		},
+	}
+
+	err := am.gqlClient.Query(context.Background(), &query, queryVariables, gql.OperationName("GetAccountWithProvider"))
+
+	if err != nil {
+		return err
+	}
+
+	// delete user from authentication providers
+	for _, ap := range query.AccountProviders {
+		err = am.As(AuthProviderType(ap.Name)).DeleteUser(ap.ProviderUserID)
+		if err != nil {
+			return err
+		}
+	}
+
+	var deleteMutation struct {
+		DeleteAccount struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"delete_account(where: $where)"`
+	}
+
+	deleteVariables := map[string]interface{}{
+		"where": account_bool_exp{
+			"id": map[string]string{
+				"_eq": id,
+			},
+		},
+	}
+
+	return am.gqlClient.Mutate(context.Background(), &deleteMutation, deleteVariables, gql.OperationName("DeleteAccountById"))
+
 }
