@@ -66,7 +66,7 @@ func (ja JWTAuth) GetName() AuthProviderType {
 
 func (ja *JWTAuth) CreateUser(input CreateAccountInput) (*Account, error) {
 	if input.Password == "" {
-		return nil, errors.New(ErrorCodePasswordRequired)
+		return nil, errors.New(ErrCodePasswordRequired)
 	}
 
 	if input.ID == "" {
@@ -78,13 +78,16 @@ func (ja *JWTAuth) CreateUser(input CreateAccountInput) (*Account, error) {
 		return nil, err
 	}
 	return &Account{
-		ID:          input.ID,
-		Email:       input.Email,
-		Password:    string(hashedPassword),
-		DisplayName: input.DisplayName,
-		PhoneCode:   input.PhoneCode,
-		PhoneNumber: input.PhoneNumber,
-		Verified:    input.Verified,
+		BaseAccount: BaseAccount{
+			ID:          input.ID,
+			Email:       input.Email,
+			Password:    string(hashedPassword),
+			DisplayName: input.DisplayName,
+			PhoneCode:   input.PhoneCode,
+			PhoneNumber: input.PhoneNumber,
+			Role:        input.Role,
+			Verified:    input.Verified,
+		},
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
@@ -94,19 +97,31 @@ func (ja *JWTAuth) CreateUser(input CreateAccountInput) (*Account, error) {
 	}, nil
 }
 
+func (ja *JWTAuth) GetUserByID(id string) (*Account, error) {
+	return ja.getUser(map[string]interface{}{
+		"where": account_bool_exp{
+			"id": map[string]string{
+				"_eq": id,
+			},
+		},
+	})
+}
+
 func (ja *JWTAuth) GetUserByEmail(email string) (*Account, error) {
-	ctx := context.Background()
-
-	var query struct {
-		Accounts []Account `graphql:"account(where: $where, limit: 1)"`
-	}
-
-	variables := map[string]interface{}{
+	return ja.getUser(map[string]interface{}{
 		"where": account_bool_exp{
 			"email": map[string]string{
 				"_eq": email,
 			},
 		},
+	})
+}
+
+func (ja *JWTAuth) getUser(variables map[string]interface{}) (*Account, error) {
+	ctx := context.Background()
+
+	var query struct {
+		Accounts []Account `graphql:"account(where: $where, limit: 1)"`
 	}
 
 	err := ja.client.Query(ctx, &query, variables, gql.OperationName("GetAccountByEmail"))
@@ -122,7 +137,7 @@ func (ja *JWTAuth) GetUserByEmail(email string) (*Account, error) {
 }
 
 func (ja *JWTAuth) SetCustomClaims(uid string, input map[string]interface{}) error {
-	return errors.New(ErrorCodeUnsupported)
+	return errors.New(ErrCodeUnsupported)
 }
 
 func (ja *JWTAuth) EncodeToken(uid string) (*AccessToken, error) {
@@ -176,11 +191,11 @@ func (ja *JWTAuth) VerifyToken(token string) (*AccountProvider, error) {
 	}
 
 	if result.ExpirationTime <= time.Now().Unix() {
-		return nil, errors.New(ErrorCodeTokenExpired)
+		return nil, errors.New(ErrCodeTokenExpired)
 	}
 
 	if ja.config.Issuer != "" && ja.config.Issuer != result.Issuer {
-		return nil, errors.New(ErrorCodeJWTInvalidIssuer)
+		return nil, errors.New(ErrCodeJWTInvalidIssuer)
 	}
 
 	return &AccountProvider{
@@ -260,19 +275,19 @@ func (ja *JWTAuth) signInWithPassword(where account_bool_exp, password string) (
 	}
 
 	if err == nil && len(query.Accounts) == 0 {
-		return nil, errors.New(ErrorCodeAccountNotFound)
+		return nil, errors.New(ErrCodeAccountNotFound)
 	}
 
 	u := query.Accounts[0]
 
 	if u.Password == "" {
-		return nil, errors.New(ErrorCodePasswordNotMatch)
+		return nil, errors.New(ErrCodePasswordNotMatch)
 	}
 
 	err = ja.comparePassword(u.Password, password)
 
 	if err != nil {
-		return nil, errors.New(ErrorCodePasswordNotMatch)
+		return nil, errors.New(ErrCodePasswordNotMatch)
 	}
 
 	return &u, nil

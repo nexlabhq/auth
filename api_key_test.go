@@ -67,7 +67,7 @@ func TestAPIKeyValidate(t *testing.T) {
 					"X-Forwarded-Port": []string{"8080"},
 				},
 			},
-			errors.New(ErrorCodeAPIKeyInvalidFQDN),
+			errors.New(ErrCodeAPIKeyInvalidFQDN),
 		},
 		{
 			&APIKey{
@@ -97,7 +97,7 @@ func TestAPIKeyValidate(t *testing.T) {
 					"X-Real-Ip":        []string{"1.1.1.1"},
 				},
 			},
-			errors.New(ErrorCodeAPIKeyInvalidIP),
+			errors.New(ErrCodeAPIKeyInvalidIP),
 		},
 		{
 			&APIKey{
@@ -142,7 +142,7 @@ func TestAPIKeyValidate(t *testing.T) {
 					"X-Real-Ip":        []string{"192.168.0.100"},
 				},
 			},
-			errors.New(ErrorCodeAPIKeyExpired),
+			errors.New(ErrCodeAPIKeyExpired),
 		},
 	} {
 		assert.Equal(t, ft.Error, keyAuth.validate(ft.APIKey, ft.Request), "%d", i)

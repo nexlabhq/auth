@@ -44,7 +44,7 @@ func (fa *FirebaseAuth) CreateUser(input CreateAccountInput) (*Account, error) {
 	params = params.UID((input.ID))
 
 	if input.PhoneNumber != "" && input.PhoneEnabled {
-		params = params.PhoneNumber(getI18nPhoneNumber(input.PhoneCode, input.PhoneNumber))
+		params = params.PhoneNumber(formatI18nPhoneNumber(input.PhoneCode, input.PhoneNumber))
 	}
 
 	u, err := authClient.CreateUser(ctx, params)
@@ -53,12 +53,15 @@ func (fa *FirebaseAuth) CreateUser(input CreateAccountInput) (*Account, error) {
 	}
 
 	return &Account{
-		ID:          input.ID,
-		Email:       input.Email,
-		DisplayName: input.DisplayName,
-		PhoneCode:   input.PhoneCode,
-		PhoneNumber: input.PhoneNumber,
-		Verified:    input.Verified,
+		BaseAccount: BaseAccount{
+			ID:          input.ID,
+			Email:       input.Email,
+			DisplayName: input.DisplayName,
+			PhoneCode:   input.PhoneCode,
+			PhoneNumber: input.PhoneNumber,
+			Role:        input.Role,
+			Verified:    input.Verified,
+		},
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthFirebase),
@@ -68,13 +71,26 @@ func (fa *FirebaseAuth) CreateUser(input CreateAccountInput) (*Account, error) {
 	}, nil
 }
 
+func (fa *FirebaseAuth) GetUserByID(id string) (*Account, error) {
+	ctx := context.Background()
+	authClient, err := fa.App.Auth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return fa.applyUser(authClient.GetUser(ctx, id))
+}
+
 func (fa *FirebaseAuth) GetUserByEmail(email string) (*Account, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
 	if err != nil {
 		return nil, err
 	}
-	u, err := authClient.GetUserByEmail(ctx, email)
+	return fa.applyUser(authClient.GetUserByEmail(ctx, email))
+}
+
+func (fa *FirebaseAuth) applyUser(u *auth.UserRecord, err error) (*Account, error) {
+
 	if err != nil {
 		if !auth.IsUserNotFound(err) {
 			return nil, err
@@ -82,11 +98,23 @@ func (fa *FirebaseAuth) GetUserByEmail(email string) (*Account, error) {
 		return nil, nil
 	}
 
+	phoneCode := 0
+	phoneNumber := ""
+	if u.PhoneNumber != "" {
+		phoneCode, phoneNumber, err = parseI18nPhoneNumber(u.PhoneNumber, "")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &Account{
-		ID:          u.UID,
-		Email:       u.Email,
-		DisplayName: u.DisplayName,
-		Verified:    u.EmailVerified,
+		BaseAccount: BaseAccount{
+			Email:       u.Email,
+			DisplayName: u.DisplayName,
+			PhoneCode:   phoneCode,
+			PhoneNumber: phoneNumber,
+			Verified:    u.EmailVerified,
+		},
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthFirebase),
@@ -140,17 +168,17 @@ func (fa *FirebaseAuth) ChangePassword(uid string, newPassword string) error {
 }
 
 func (fa *FirebaseAuth) EncodeToken(uid string) (*AccessToken, error) {
-	return nil, errors.New(ErrorCodeUnsupported)
+	return nil, errors.New(ErrCodeUnsupported)
 }
 
 func (fa *FirebaseAuth) SignInWithEmailAndPassword(email string, password string) (*Account, error) {
-	return nil, errors.New(ErrorCodeUnsupported)
+	return nil, errors.New(ErrCodeUnsupported)
 }
 
 func (fa *FirebaseAuth) SignInWithPhoneAndPassword(phoneCode int, phoneNumber string, password string) (*Account, error) {
-	return nil, errors.New(ErrorCodeUnsupported)
+	return nil, errors.New(ErrCodeUnsupported)
 }
 
 func (fa *FirebaseAuth) VerifyPassword(providerUserId string, password string) error {
-	return errors.New(ErrorCodeUnsupported)
+	return errors.New(ErrCodeUnsupported)
 }

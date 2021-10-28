@@ -35,7 +35,7 @@ func NewAPIKeyAuth(client *gql.Client) *apiKeyAuth {
 func (ak *apiKeyAuth) Verify(apiKey string, req *http.Request) (*APIKey, error) {
 
 	if apiKey == "" {
-		return nil, errors.New(ErrorCodeAPIKeyRequired)
+		return nil, errors.New(ErrCodeAPIKeyRequired)
 	}
 
 	var query struct {
@@ -57,7 +57,7 @@ func (ak *apiKeyAuth) Verify(apiKey string, req *http.Request) (*APIKey, error) 
 	}
 
 	if len(query.APIKeys) == 0 {
-		return nil, errors.New(ErrorCodeAPIKeyNotFound)
+		return nil, errors.New(ErrCodeAPIKeyNotFound)
 	}
 
 	apiK := query.APIKeys[0]
@@ -70,7 +70,7 @@ func (ak *apiKeyAuth) Verify(apiKey string, req *http.Request) (*APIKey, error) 
 func (ak *apiKeyAuth) validate(apiK *APIKey, req *http.Request) error {
 
 	if !apiK.ExpiredAt.IsZero() && apiK.ExpiredAt.Before(time.Now()) {
-		return errors.New(ErrorCodeAPIKeyExpired)
+		return errors.New(ErrCodeAPIKeyExpired)
 	}
 
 	if apiK.AllowedFQDN != "" {
@@ -79,7 +79,7 @@ func (ak *apiKeyAuth) validate(apiK *APIKey, req *http.Request) error {
 		if fqdn[0] != reqHost || (len(fqdn) == 1 && reqPort != "80" && reqPort != "443") ||
 			(len(fqdn) == 2 && reqPort != fqdn[1]) ||
 			len(fqdn) > 2 {
-			return errors.New(ErrorCodeAPIKeyInvalidFQDN)
+			return errors.New(ErrCodeAPIKeyInvalidFQDN)
 		}
 	}
 
@@ -105,7 +105,7 @@ func (ak *apiKeyAuth) validate(apiK *APIKey, req *http.Request) error {
 	}
 
 	if !ipValid {
-		return errors.New(ErrorCodeAPIKeyInvalidIP)
+		return errors.New(ErrCodeAPIKeyInvalidIP)
 	}
 
 	return nil

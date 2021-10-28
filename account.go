@@ -1,3 +1,4 @@
+// Package auth includes the collection of authentication solutions
 package auth
 
 import (
@@ -6,23 +7,26 @@ import (
 	"fmt"
 
 	firebase "firebase.google.com/go/v4"
-	"firebase.google.com/go/v4/auth"
 	gql "github.com/hasura/go-graphql-client"
 )
 
 // AccountManagerConfig config options for AccountManager
 type AccountManagerConfig struct {
 	FirebaseApp     *firebase.App
-	DefaultProvider AuthProviderType
 	GQLClient       *gql.Client
 	JWT             *JWTAuthConfig
+	DefaultProvider AuthProviderType
+	DefaultRole     string
+	CreateFromToken bool
 }
 
 // AccountManager account business method
 type AccountManager struct {
-	providers    map[AuthProviderType]AuthProvider
-	gqlClient    *gql.Client
-	providerType AuthProviderType
+	providers       map[AuthProviderType]AuthProvider
+	gqlClient       *gql.Client
+	providerType    AuthProviderType
+	defaultRole     string
+	createFromToken bool
 }
 
 // NewAccountManager create new AccountManager instance
@@ -59,16 +63,27 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 		providers:    providers,
 		gqlClient:    config.GQLClient,
 		providerType: config.DefaultProvider,
+		defaultRole:  config.DefaultRole,
 	}, nil
 }
 
-// As get provider name
+// As create new account manager with target provider
 func (am AccountManager) As(providerType AuthProviderType) *AccountManager {
 	return &AccountManager{
 		providers:    am.providers,
 		gqlClient:    am.gqlClient,
 		providerType: providerType,
 	}
+}
+
+// SetDefaultRole set default role
+func (am *AccountManager) SetDefaultRole(role string) {
+	am.defaultRole = role
+}
+
+// GetDefaultRole get default role
+func (am *AccountManager) GetDefaultRole() string {
+	return am.defaultRole
 }
 
 // GetProviderName get provider name
@@ -96,9 +111,18 @@ func (am *AccountManager) GetAccountByEmail(email string) (*Account, error) {
 
 	u, err := am.getCurrentProvider().GetUserByEmail(email)
 	if err != nil {
-		if !auth.IsUserNotFound(err) {
-			return nil, err
-		}
+		return nil, err
+	}
+
+	// get account info from the database
+	// if ID is not null, we assume that account has enough info
+	if u.ID != "" {
+		return u, nil
+	}
+
+	acc, err := am.findAccountByProviderUser(u.AccountProviders[0].ProviderUserID)
+	if err != nil || acc != nil {
+		return acc, err
 	}
 
 	return u, nil
@@ -110,11 +134,11 @@ func (am *AccountManager) CreateAccountWithProvider(input CreateAccountInput) (*
 	ctx := context.Background()
 
 	if (input.EmailEnabled || (!input.EmailEnabled && !input.PhoneEnabled)) && input.Email == "" {
-		return nil, errors.New(ErrorCodeEmailRequired)
+		return nil, errors.New(ErrCodeEmailRequired)
 	}
 
 	if input.PhoneEnabled && (input.PhoneCode == 0 || input.PhoneNumber == "") {
-		return nil, errors.New(ErrorCodePhoneRequired)
+		return nil, errors.New(ErrCodePhoneRequired)
 	}
 
 	// set default login as email
@@ -177,7 +201,7 @@ func (am *AccountManager) CreateAccountWithProvider(input CreateAccountInput) (*
 	}
 
 	if len(existAccount.Account) > 0 {
-		return nil, errors.New(ErrorCodeAccountExisted)
+		return nil, errors.New(ErrCodeAccountExisted)
 	}
 
 	input.ID = genID()
@@ -308,24 +332,54 @@ func (am *AccountManager) VerifyToken(token string) (*Account, error) {
 		return nil, err
 	}
 
+	acc, err := am.findAccountByProviderUser(provider.ProviderUserID)
+	if err != nil || acc != nil {
+		return acc, err
+	}
+
+	if !am.createFromToken {
+		return nil, errors.New(ErrCodeAccountNoProvider)
+	}
+
+	// allow create account with provider info
+	acc, err = am.getCurrentProvider().GetUserByID(provider.ProviderUserID)
+	if err != nil || acc.ID != "" {
+		return acc, err
+	}
+
+	acc.ID = genID()
+	accInsertInput := map[string]interface{}{
+		"id":            acc.ID,
+		"display_name":  acc.DisplayName,
+		"role":          am.defaultRole,
+		"verified":      acc.Verified,
+		"email_enabled": acc.Email != "",
+		"phone_enabled": acc.PhoneNumber != "",
+		"account_providers": map[string]interface{}{
+			"data": acc.AccountProviders,
+		},
+	}
+
+	_, err = am.InsertAccount(accInsertInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (am *AccountManager) findAccountByProviderUser(userId string) (*Account, error) {
 	// Get user by provider
 	var query struct {
 		AccountProviders []struct {
-			Account struct {
-				ID          string `graphql:"id"`
-				Role        string `graphql:"role"`
-				Email       string `graphql:"email"`
-				DisplayName string `graphql:"display_name"`
-				PhoneCode   int    `graphql:"phone_code"`
-				PhoneNumber string `graphql:"phone_number"`
-			}
+			Account BaseAccount `graphql:"account"`
 		} `graphql:"account_provider(where: $where, limit: 1)"`
 	}
 
 	variables := map[string]interface{}{
 		"where": account_provider_bool_exp{
 			"provider_user_id": map[string]string{
-				"_eq": provider.ProviderUserID,
+				"_eq": userId,
 			},
 			"provider_name": map[string]string{
 				"_eq": string(am.providerType),
@@ -333,32 +387,34 @@ func (am *AccountManager) VerifyToken(token string) (*Account, error) {
 		},
 	}
 
-	err = am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountProvider"))
+	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountProvider"))
 	if err != nil {
 		return nil, err
 	}
 
-	if len(query.AccountProviders) == 0 {
-		return nil, fmt.Errorf("account provider not found; provider: %s, user_id: %s", am.GetProviderName(), provider.ProviderUserID)
+	if len(query.AccountProviders) > 0 {
+		accProvider := query.AccountProviders[0]
+		return &Account{
+			BaseAccount: accProvider.Account,
+			AccountProviders: []AccountProvider{
+				{
+					ProviderUserID: userId,
+					AccountID:      &accProvider.Account.ID,
+					Name:           string(am.providerType),
+				},
+			},
+		}, nil
 	}
 
-	return &Account{
-		ID:               query.AccountProviders[0].Account.ID,
-		Role:             query.AccountProviders[0].Account.Role,
-		Email:            query.AccountProviders[0].Account.Email,
-		DisplayName:      query.AccountProviders[0].Account.DisplayName,
-		PhoneCode:        query.AccountProviders[0].Account.PhoneCode,
-		PhoneNumber:      query.AccountProviders[0].Account.PhoneNumber,
-		AccountProviders: []AccountProvider{*provider},
-	}, nil
+	return nil, nil
 }
 
 func (am *AccountManager) SignInWithEmailAndPassword(email string, password string) (*Account, error) {
 	return am.getCurrentProvider().SignInWithEmailAndPassword(email, password)
 }
 
-func (am *AccountManager) VerifyPassword(providerUserId string, password string) error {
-	return am.getCurrentProvider().VerifyPassword(providerUserId, password)
+func (am *AccountManager) VerifyPassword(providerUserID string, password string) error {
+	return am.getCurrentProvider().VerifyPassword(providerUserID, password)
 }
 
 func (am *AccountManager) SignInWithPhoneAndPassword(phoneCode int, phoneNumber string, password string) (*Account, error) {
@@ -373,16 +429,16 @@ func (am *AccountManager) EncodeToken(uid string) (*AccessToken, error) {
 func (am *AccountManager) ChangePassword(id string, currentPassword string, newPassword string, isAdmin bool) error {
 
 	if newPassword == "" {
-		return errors.New(ErrorCodeNewPasswordRequired)
+		return errors.New(ErrCodeNewPasswordRequired)
 	}
 
 	if !isAdmin {
 		if currentPassword == "" {
-			return errors.New(ErrorCodeCurrentPasswordRequired)
+			return errors.New(ErrCodeCurrentPasswordRequired)
 		}
 
 		if currentPassword == newPassword {
-			return errors.New(ErrorCodeNewPasswordEqualCurrentPassword)
+			return errors.New(ErrCodeNewPasswordEqualCurrentPassword)
 		}
 	}
 
@@ -405,7 +461,7 @@ func (am *AccountManager) ChangePassword(id string, currentPassword string, newP
 	}
 
 	if len(query.AccountProviders) == 0 {
-		return errors.New(ErrorCodeAccountNoProvider)
+		return errors.New(ErrCodeAccountNoProvider)
 	}
 
 	var supportedProviders []AccountProvider
@@ -421,7 +477,7 @@ func (am *AccountManager) ChangePassword(id string, currentPassword string, newP
 			err := provider.VerifyPassword(ap.ProviderUserID, currentPassword)
 
 			if err != nil {
-				if err.Error() == ErrorCodeUnsupported {
+				if err.Error() == ErrCodeUnsupported {
 					continue
 				}
 				return err
@@ -444,7 +500,7 @@ func (am *AccountManager) ChangeAllProvidersPassword(providers []AccountProvider
 		}
 		err := provider.ChangePassword(ap.ProviderUserID, password)
 		if err != nil {
-			if err.Error() == ErrorCodeUnsupported {
+			if err.Error() == ErrCodeUnsupported {
 				continue
 			}
 			return err

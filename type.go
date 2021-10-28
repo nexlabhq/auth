@@ -14,25 +14,25 @@ const (
 )
 
 const (
-	ErrorCodeUnsupported                     = "unsupported"
-	ErrorCodeTokenExpired                    = "token_expired"
-	ErrorCodeJWTInvalidIssuer                = "jwt:invalid_issuer"
-	ErrorCodePasswordRequired                = "required:password"
-	ErrorCodeCurrentPasswordRequired         = "required:current_password"
-	ErrorCodeNewPasswordRequired             = "required:new_password"
-	ErrorCodeNewPasswordEqualCurrentPassword = "new_pw_equal_current_pw"
-	ErrorCodeEmailRequired                   = "required:email"
-	ErrorCodePhoneRequired                   = "required:phone"
-	ErrorCodePasswordNotMatch                = "password_not_match"
-	ErrorCodeCurrentPasswordNotMatch         = "current_password_not_match"
-	ErrorCodeAccountNotFound                 = "account:not_found"
-	ErrorCodeAccountExisted                  = "account:existed"
-	ErrorCodeAccountNoProvider               = "account:no_provider"
-	ErrorCodeAPIKeyInvalidIP                 = "api_key:invalid_ip"
-	ErrorCodeAPIKeyInvalidFQDN               = "api_key:invalid_fqdn"
-	ErrorCodeAPIKeyExpired                   = "api_key:expired"
-	ErrorCodeAPIKeyRequired                  = "api_key:required"
-	ErrorCodeAPIKeyNotFound                  = "api_key:not_found"
+	ErrCodeUnsupported                     = "unsupported"
+	ErrCodeTokenExpired                    = "token_expired"
+	ErrCodeJWTInvalidIssuer                = "jwt:invalid_issuer"
+	ErrCodePasswordRequired                = "required:password"
+	ErrCodeCurrentPasswordRequired         = "required:current_password"
+	ErrCodeNewPasswordRequired             = "required:new_password"
+	ErrCodeNewPasswordEqualCurrentPassword = "new_pw_equal_current_pw"
+	ErrCodeEmailRequired                   = "required:email"
+	ErrCodePhoneRequired                   = "required:phone"
+	ErrCodePasswordNotMatch                = "password_not_match"
+	ErrCodeCurrentPasswordNotMatch         = "current_password_not_match"
+	ErrCodeAccountNotFound                 = "account:not_found"
+	ErrCodeAccountExisted                  = "account:existed"
+	ErrCodeAccountNoProvider               = "account:no_provider"
+	ErrCodeAPIKeyInvalidIP                 = "api_key:invalid_ip"
+	ErrCodeAPIKeyInvalidFQDN               = "api_key:invalid_fqdn"
+	ErrCodeAPIKeyExpired                   = "api_key:expired"
+	ErrCodeAPIKeyRequired                  = "api_key:required"
+	ErrCodeAPIKeyNotFound                  = "api_key:not_found"
 )
 
 func GetAuthProviderTypes() []AuthProviderType {
@@ -82,15 +82,19 @@ type AccountProvider struct {
 
 type account_provider_insert_input AccountProvider
 
+type BaseAccount struct {
+	ID          string `json:"id" graphql:"id"`
+	Email       string `json:"email" graphql:"email"`
+	PhoneCode   int    `json:"phone_code" graphql:"phone_code"`
+	PhoneNumber string `json:"phone_number" graphql:"phone_number"`
+	DisplayName string `json:"display_name" graphql:"display_name"`
+	Password    string `json:"password,omitempty" graphql:"password"`
+	Role        string `json:"role" graphql:"role"`
+	Verified    bool   `json:"verified" graphql:"verified"`
+}
+
 type Account struct {
-	ID               string            `json:"id" graphql:"id"`
-	Email            string            `json:"email" graphql:"email"`
-	PhoneCode        int               `json:"phone_code" graphql:"phone_code"`
-	PhoneNumber      string            `json:"phone_number" graphql:"phone_number"`
-	DisplayName      string            `json:"display_name" graphql:"display_name"`
-	Password         string            `json:"password,omitempty" graphql:"password"`
-	Role             string            `json:"role" graphql:"role"`
-	Verified         bool              `json:"verified" graphql:"verified"`
+	BaseAccount
 	AccountProviders []AccountProvider `json:"account_providers" graphql:"account_providers"`
 }
 
@@ -105,6 +109,7 @@ type AccessToken struct {
 type AuthProvider interface {
 	GetName() AuthProviderType
 	CreateUser(CreateAccountInput) (*Account, error)
+	GetUserByID(id string) (*Account, error)
 	GetUserByEmail(email string) (*Account, error)
 	SetCustomClaims(uid string, input map[string]interface{}) error
 	EncodeToken(uid string) (*AccessToken, error)

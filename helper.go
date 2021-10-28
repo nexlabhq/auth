@@ -7,17 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-func getI18nPhoneNumber(code int, phone string) string {
-	if len(phone) == 0 {
-		return ""
-	}
-	if phone[0] == '0' {
-		phone = phone[1:]
-	}
-	return fmt.Sprintf("+%d%s", code, phone)
-}
+	"github.com/ttacon/libphonenumber"
+)
 
 const (
 	letterIdxBits = 6                    // 6 bits to represent a letter index
@@ -80,4 +72,25 @@ func getRequestIP(r *http.Request) string {
 		return ip
 	}
 	return r.RemoteAddr
+}
+
+func formatI18nPhoneNumber(code int, phone string) string {
+	if len(phone) == 0 {
+		return ""
+	}
+
+	phone = strings.TrimLeft(phone, "0")
+	return fmt.Sprintf("+%d%s", code, phone)
+}
+
+func parseI18nPhoneNumber(rawNumber string, defaultRegion string) (int, string, error) {
+	pn, err := libphonenumber.Parse(rawNumber, defaultRegion)
+	if err != nil {
+		return 0, "", err
+	}
+
+	sNumber := strconv.Itoa(int(pn.GetNationalNumber()))
+	return int(pn.GetCountryCode()),
+		fmt.Sprintf("%0*d", int(pn.GetNumberOfLeadingZeros())+len(sNumber), pn.GetNationalNumber()),
+		nil
 }
