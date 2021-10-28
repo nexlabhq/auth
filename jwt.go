@@ -51,7 +51,7 @@ func NewJWTAuth(client *gql.Client, config JWTAuthConfig) *JWTAuth {
 		config.Cost = bcrypt.DefaultCost
 	}
 	if config.Algorithm == "" {
-		config.Algorithm = jose.RS256
+		config.Algorithm = jose.HS256
 	}
 
 	return &JWTAuth{

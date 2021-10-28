@@ -41,7 +41,7 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 			return nil, errors.New("FirebaseApp is required")
 		}
 	case AuthJWT:
-		if config.FirebaseApp == nil {
+		if config.JWT == nil {
 			return nil, errors.New("JWTAuthConfig is required")
 		}
 	}
@@ -70,9 +70,11 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 // As create new account manager with target provider
 func (am AccountManager) As(providerType AuthProviderType) *AccountManager {
 	return &AccountManager{
-		providers:    am.providers,
-		gqlClient:    am.gqlClient,
-		providerType: providerType,
+		providers:       am.providers,
+		gqlClient:       am.gqlClient,
+		providerType:    providerType,
+		defaultRole:     am.defaultRole,
+		createFromToken: am.createFromToken,
 	}
 }
 
