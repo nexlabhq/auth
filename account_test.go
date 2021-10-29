@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"testing"
@@ -98,18 +97,6 @@ func TestAuthMangerAs(t *testing.T) {
 	assert.Equal(t, manager.createFromToken, managerFirebase.createFromToken)
 	assert.Equal(t, manager.defaultRole, managerFirebase.defaultRole)
 	assert.Equal(t, AuthFirebase, managerFirebase.providerType)
-}
-
-func TestParseJson(t *testing.T) {
-	env := os.Getenv("TEST_JSON")
-	log.Printf("TEST_JSON: %s", env)
-
-	var testObject struct {
-		Foo string `json:"foo"`
-	}
-
-	err := json.Unmarshal([]byte(env), &testObject)
-	assert.NoError(t, err)
 }
 
 func TestJWTAuthProvider(t *testing.T) {
