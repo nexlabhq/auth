@@ -45,7 +45,7 @@ func setupHasuraClient() *graphql.Client {
 }
 
 func setupFirebaseApp() *firebase.App {
-	app, err := firebase.NewApp(context.Background(), nil, option.WithCredentialsJSON([]byte(os.Getenv("GOOGLE_CREDENCTIALS"))))
+	app, err := firebase.NewApp(context.Background(), nil, option.WithCredentialsJSON([]byte(os.Getenv("GOOGLE_CREDENTIALS"))))
 
 	if err != nil {
 		panic(err)
