@@ -430,6 +430,8 @@ func (am *AccountManager) VerifyToken(token string) (*Account, error) {
 		return nil, err
 	}
 
+	acc.Role = am.defaultRole
+
 	return acc, nil
 }
 
