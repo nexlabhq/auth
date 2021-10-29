@@ -24,7 +24,7 @@ jobs:
         run: | 
           HASURA_GRAPHQL_ADMIN_SECRET=${{ secrets.HASURA_GRAPHQL_ADMIN_SECRET }}
           DATA_URL=${{ secrets.DATA_URL }}
-          GOOGLE_CREDENTIALS=${{ secrets.GOOGLE_CREDENTIALS }}
+          GOOGLE_CREDENTIALS="${{ secrets.GOOGLE_CREDENTIALS }}"
           FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
           TEST_JSON=${{ secrets.TEST_JSON }}
           go test -v -p=1 -tags=integration ./...
