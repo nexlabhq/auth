@@ -413,9 +413,6 @@ func (am *AccountManager) VerifyToken(token string) (*Account, error) {
 	accInsertInput := map[string]interface{}{
 		"id":            acc.ID,
 		"display_name":  acc.DisplayName,
-		"email":         acc.Email,
-		"phone_code":    acc.PhoneCode,
-		"phone_number":  acc.PhoneNumber,
 		"role":          am.defaultRole,
 		"verified":      acc.Verified,
 		"email_enabled": acc.Email != "",
@@ -423,6 +420,15 @@ func (am *AccountManager) VerifyToken(token string) (*Account, error) {
 		"account_providers": map[string]interface{}{
 			"data": acc.AccountProviders,
 		},
+	}
+
+	if acc.Email != "" {
+		accInsertInput["email"] = acc.Email
+	}
+
+	if acc.PhoneNumber != "" {
+		accInsertInput["phone_code"] = acc.PhoneCode
+		accInsertInput["phone_number"] = acc.PhoneNumber
 	}
 
 	_, err = am.InsertAccount(accInsertInput)
