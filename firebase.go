@@ -214,3 +214,7 @@ func (fa *FirebaseAuth) SignInWithPhoneAndPassword(phoneCode int, phoneNumber st
 func (fa *FirebaseAuth) VerifyPassword(providerUserId string, password string) error {
 	return errors.New(ErrCodeUnsupported)
 }
+
+func (fa *FirebaseAuth) RefreshToken(refreshToken string, accessToken string) (*AccessToken, error) {
+	return nil, errors.New(ErrCodeUnsupported)
+}

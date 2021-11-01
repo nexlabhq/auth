@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	jose "github.com/dvsekhvalnov/jose2go"
@@ -26,6 +27,7 @@ type JWTAuthConfig struct {
 	Cost       int           `envconfig:"JWT_HASH_COST" default:"10"`
 	SessionKey string        `envconfig:"SESSION_KEY"`
 	TTL        time.Duration `envconfig:"SESSION_TTL" default:"1h"`
+	RefreshTTL time.Duration `envconfig:"SESSION_REFRESH_TTL" default:"0ms"`
 	Issuer     string        `envconfig:"JWT_ISSUER"`
 	Algorithm  string        `envconfig:"JWT_ALGORITHM" default:"HS256"`
 }
@@ -144,9 +146,9 @@ func (ja *JWTAuth) EncodeToken(uid string) (*AccessToken, error) {
 
 	now := time.Now()
 	exp := now.Add(ja.config.TTL)
-
+	jwtID := uuid.New().String()
 	payload := jwtPayload{
-		JwtID:          uuid.New().String(),
+		JwtID:          jwtID,
 		Issuer:         ja.config.Issuer,
 		Subject:        uid,
 		Audience:       "identity",
@@ -169,33 +171,47 @@ func (ja *JWTAuth) EncodeToken(uid string) (*AccessToken, error) {
 		return nil, err
 	}
 
+	// encode refresh token if the expiry is set
+	var refreshToken string
+	if ja.config.RefreshTTL >= ja.config.TTL {
+		refreshPayload := jwtPayload{
+			JwtID:          ja.genRefreshTokenID(jwtID),
+			Issuer:         ja.config.Issuer,
+			Subject:        uid,
+			Audience:       "identity",
+			IssuedAt:       now.Unix(),
+			NotBeforeTime:  now.Unix(),
+			ExpirationTime: now.Add(ja.config.RefreshTTL).Unix(),
+		}
+
+		refreshPayloadBytes, err := json.Marshal(refreshPayload)
+		if err != nil {
+			return nil, err
+		}
+
+		refreshToken, err = jose.SignBytes(refreshPayloadBytes, ja.config.Algorithm, []byte(ja.config.SessionKey),
+			jose.Header("typ", "JWT"),
+			jose.Header("alg", ja.config.Algorithm),
+		)
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &AccessToken{
-		AccessToken: token,
-		TokenType:   string(ja.GetName()),
-		ExpiresIn:   int(ja.config.TTL / time.Second),
+		AccessToken:  token,
+		TokenType:    string(ja.GetName()),
+		ExpiresIn:    int(ja.config.TTL / time.Second),
+		RefreshToken: refreshToken,
 	}, nil
 }
 
 func (ja *JWTAuth) VerifyToken(token string) (*AccountProvider, error) {
 
-	bytes, _, err := jose.DecodeBytes(token, []byte(ja.config.SessionKey))
+	result, err := ja.decodeToken(token)
 	if err != nil {
 		return nil, err
-	}
-
-	var result jwtPayload
-
-	err = json.Unmarshal(bytes, &result)
-	if err != nil {
-		return nil, err
-	}
-
-	if result.ExpirationTime <= time.Now().Unix() {
-		return nil, errors.New(ErrCodeTokenExpired)
-	}
-
-	if ja.config.Issuer != "" && ja.config.Issuer != result.Issuer {
-		return nil, errors.New(ErrCodeJWTInvalidIssuer)
 	}
 
 	return &AccountProvider{
@@ -305,4 +321,53 @@ func (ja *JWTAuth) VerifyPassword(providerUserId string, password string) error 
 
 func (ja *JWTAuth) DeleteUser(uid string) error {
 	return nil
+}
+
+func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string) (*AccessToken, error) {
+	decodedRefreshToken, err := ja.decodeToken(refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	decodedToken, err := ja.decodeToken(accessToken)
+	if err != nil && err.Error() != ErrCodeTokenExpired {
+		return nil, err
+	}
+
+	if decodedRefreshToken.JwtID != ja.genRefreshTokenID(decodedToken.JwtID) ||
+		decodedRefreshToken.Subject != decodedToken.Subject ||
+		decodedRefreshToken.IssuedAt != decodedToken.IssuedAt {
+		return nil, errors.New(ErrCodeTokenMismatched)
+	}
+
+	return ja.EncodeToken(decodedRefreshToken.Subject)
+}
+
+func (ja *JWTAuth) decodeToken(token string) (*jwtPayload, error) {
+
+	bytes, _, err := jose.DecodeBytes(token, []byte(ja.config.SessionKey))
+	if err != nil {
+		return nil, err
+	}
+
+	var result jwtPayload
+
+	err = json.Unmarshal(bytes, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	if ja.config.Issuer != "" && ja.config.Issuer != result.Issuer {
+		return &result, errors.New(ErrCodeJWTInvalidIssuer)
+	}
+
+	if result.ExpirationTime <= time.Now().Unix() {
+		return &result, errors.New(ErrCodeTokenExpired)
+	}
+
+	return &result, nil
+}
+
+func (ja *JWTAuth) genRefreshTokenID(id string) string {
+	return fmt.Sprintf("%s-refresh", id)
 }

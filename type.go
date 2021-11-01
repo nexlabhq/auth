@@ -17,6 +17,7 @@ const (
 	ErrCodeUnsupported                     = "unsupported"
 	ErrCodeTokenExpired                    = "token_expired"
 	ErrCodeJWTInvalidIssuer                = "jwt:invalid_issuer"
+	ErrCodeTokenMismatched                 = "token_mismatched"
 	ErrCodePasswordRequired                = "required:password"
 	ErrCodeCurrentPasswordRequired         = "required:current_password"
 	ErrCodeNewPasswordRequired             = "required:new_password"
@@ -114,6 +115,7 @@ type AuthProvider interface {
 	GetUserByEmail(email string) (*Account, error)
 	SetCustomClaims(uid string, input map[string]interface{}) error
 	EncodeToken(uid string) (*AccessToken, error)
+	RefreshToken(refreshToken string, accessToken string) (*AccessToken, error)
 	VerifyToken(token string) (*AccountProvider, error)
 	VerifyPassword(uid string, password string) error
 	ChangePassword(uid string, newPassword string) error

@@ -498,6 +498,10 @@ func (am *AccountManager) EncodeToken(uid string) (*AccessToken, error) {
 	return am.getCurrentProvider().EncodeToken(uid)
 }
 
+func (am *AccountManager) RefreshToken(refreshToken string, accessToken string) (*AccessToken, error) {
+	return am.getCurrentProvider().RefreshToken(refreshToken, accessToken)
+}
+
 // ChangePassword change all providers's password of current user
 func (am *AccountManager) ChangePassword(id string, currentPassword string, newPassword string, isAdmin bool) error {
 
