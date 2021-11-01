@@ -151,7 +151,7 @@ func (ja *JWTAuth) EncodeToken(uid string) (*AccessToken, error) {
 		JwtID:          jwtID,
 		Issuer:         ja.config.Issuer,
 		Subject:        uid,
-		Audience:       "identity",
+		Audience:       "access",
 		IssuedAt:       now.Unix(),
 		NotBeforeTime:  now.Unix(),
 		ExpirationTime: exp.Unix(),
@@ -178,7 +178,7 @@ func (ja *JWTAuth) EncodeToken(uid string) (*AccessToken, error) {
 			JwtID:          ja.genRefreshTokenID(jwtID),
 			Issuer:         ja.config.Issuer,
 			Subject:        uid,
-			Audience:       "identity",
+			Audience:       "refresh",
 			IssuedAt:       now.Unix(),
 			NotBeforeTime:  now.Unix(),
 			ExpirationTime: now.Add(ja.config.RefreshTTL).Unix(),
@@ -212,6 +212,10 @@ func (ja *JWTAuth) VerifyToken(token string) (*AccountProvider, error) {
 	result, err := ja.decodeToken(token)
 	if err != nil {
 		return nil, err
+	}
+
+	if result.Audience != "access" {
+		return nil, errors.New(ErrCodeTokenMismatched)
 	}
 
 	return &AccountProvider{
@@ -327,6 +331,10 @@ func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string) (*Acces
 	decodedRefreshToken, err := ja.decodeToken(refreshToken)
 	if err != nil {
 		return nil, err
+	}
+
+	if decodedRefreshToken.Audience != "refresh" {
+		return nil, errors.New(ErrCodeTokenMismatched)
 	}
 
 	decodedToken, err := ja.decodeToken(accessToken)
