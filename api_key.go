@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -31,7 +32,7 @@ func NewAPIKeyAuth(client *gql.Client) *apiKeyAuth {
 }
 
 // Verify verify and validate the api key
-func (ak *apiKeyAuth) Verify(apiKey string, headers map[string]string) (*APIKey, error) {
+func (ak *apiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error) {
 
 	if apiKey == "" {
 		return nil, errors.New(ErrCodeAPIKeyRequired)
@@ -66,7 +67,7 @@ func (ak *apiKeyAuth) Verify(apiKey string, headers map[string]string) (*APIKey,
 	return &apiK, nil
 }
 
-func (ak *apiKeyAuth) validate(apiK *APIKey, headers map[string]string) error {
+func (ak *apiKeyAuth) validate(apiK *APIKey, headers http.Header) error {
 
 	if !apiK.ExpiredAt.IsZero() && apiK.ExpiredAt.Before(time.Now()) {
 		return errors.New(ErrCodeAPIKeyExpired)

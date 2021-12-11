@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ func TestAPIKeyValidate(t *testing.T) {
 
 	for i, ft := range []struct {
 		APIKey  *APIKey
-		Headers map[string]string
+		Headers http.Header
 		Error   error
 	}{
 		{
@@ -23,7 +24,7 @@ func TestAPIKeyValidate(t *testing.T) {
 				AllowedIPs:  nil,
 				ExpiredAt:   time.Now().Add(1 * time.Second),
 			},
-			map[string]string{},
+			http.Header{},
 			nil,
 		},
 		{
@@ -32,21 +33,9 @@ func TestAPIKeyValidate(t *testing.T) {
 				AllowedIPs:  nil,
 				ExpiredAt:   time.Now().Add(1 * time.Second),
 			},
-			map[string]string{
-				"X-Forwarded-Host": "example.com",
-				"X-Forwarded-Port": "80",
-			},
-			nil,
-		},
-		{
-			&APIKey{
-				AllowedFQDN: "example.com",
-				AllowedIPs:  nil,
-				ExpiredAt:   time.Now().Add(1 * time.Second),
-			},
-			map[string]string{
-				"X-Forwarded-Host": "example.com",
-				"X-Forwarded-Port": "443",
+			http.Header{
+				"X-Forwarded-Host": []string{"example.com"},
+				"X-Forwarded-Port": []string{"80"},
 			},
 			nil,
 		},
@@ -56,9 +45,21 @@ func TestAPIKeyValidate(t *testing.T) {
 				AllowedIPs:  nil,
 				ExpiredAt:   time.Now().Add(1 * time.Second),
 			},
-			map[string]string{
-				"X-Forwarded-Host": "example.com",
-				"X-Forwarded-Port": "8080",
+			http.Header{
+				"X-Forwarded-Host": []string{"example.com"},
+				"X-Forwarded-Port": []string{"443"},
+			},
+			nil,
+		},
+		{
+			&APIKey{
+				AllowedFQDN: "example.com",
+				AllowedIPs:  nil,
+				ExpiredAt:   time.Now().Add(1 * time.Second),
+			},
+			http.Header{
+				"X-Forwarded-Host": []string{"example.com"},
+				"X-Forwarded-Port": []string{"8080"},
 			},
 			errors.New(ErrCodeAPIKeyInvalidFQDN),
 		},
@@ -68,10 +69,10 @@ func TestAPIKeyValidate(t *testing.T) {
 				AllowedIPs:  []string{"0.0.0.0/0"},
 				ExpiredAt:   time.Now().Add(1 * time.Second),
 			},
-			map[string]string{
-				"X-Forwarded-Host": "example.com",
-				"X-Forwarded-Port": "80",
-				"X-Real-Ip":        "1.1.1.1",
+			http.Header{
+				"X-Forwarded-Host": []string{"example.com"},
+				"X-Forwarded-Port": []string{"80"},
+				"X-Real-Ip":        []string{"1.1.1.1"},
 			},
 			nil,
 		},
@@ -81,10 +82,10 @@ func TestAPIKeyValidate(t *testing.T) {
 				AllowedIPs:  []string{"192.168.0.1/32"},
 				ExpiredAt:   time.Now().Add(1 * time.Second),
 			},
-			map[string]string{
-				"X-Forwarded-Host": "example.com",
-				"X-Forwarded-Port": "80",
-				"X-Real-Ip":        "1.1.1.1",
+			http.Header{
+				"X-Forwarded-Host": []string{"example.com"},
+				"X-Forwarded-Port": []string{"80"},
+				"X-Real-Ip":        []string{"1.1.1.1"},
 			},
 			errors.New(ErrCodeAPIKeyInvalidIP),
 		},
@@ -94,10 +95,10 @@ func TestAPIKeyValidate(t *testing.T) {
 				AllowedIPs:  []string{"192.168.0.1/32"},
 				ExpiredAt:   time.Now().Add(1 * time.Second),
 			},
-			map[string]string{
-				"X-Forwarded-Host": "example.com",
-				"X-Forwarded-Port": "443",
-				"X-Real-Ip":        "192.168.0.1",
+			http.Header{
+				"X-Forwarded-Host": []string{"example.com"},
+				"X-Forwarded-Port": []string{"443"},
+				"X-Real-Ip":        []string{"192.168.0.1"},
 			},
 			nil,
 		},
@@ -107,10 +108,10 @@ func TestAPIKeyValidate(t *testing.T) {
 				AllowedIPs:  []string{"192.168.0.0/24"},
 				ExpiredAt:   time.Now().Add(1 * time.Second),
 			},
-			map[string]string{
-				"X-Forwarded-Host": "example.com",
-				"X-Forwarded-Port": "443",
-				"X-Real-Ip":        "192.168.0.100",
+			http.Header{
+				"X-Forwarded-Host": []string{"example.com"},
+				"X-Forwarded-Port": []string{"443"},
+				"X-Real-Ip":        []string{"192.168.0.100"},
 			},
 			nil,
 		},
@@ -120,10 +121,10 @@ func TestAPIKeyValidate(t *testing.T) {
 				AllowedIPs:  []string{"192.168.0.0/24"},
 				ExpiredAt:   time.Now().Add(-1 * time.Second),
 			},
-			map[string]string{
-				"X-Forwarded-Host": "example.com",
-				"X-Forwarded-Port": "443",
-				"X-Real-Ip":        "192.168.0.100",
+			http.Header{
+				"X-Forwarded-Host": []string{"example.com"},
+				"X-Forwarded-Port": []string{"443"},
+				"X-Real-Ip":        []string{"192.168.0.100"},
 			},
 			errors.New(ErrCodeAPIKeyExpired),
 		},

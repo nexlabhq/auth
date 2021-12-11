@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"math/rand"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -53,28 +54,20 @@ func genID() string {
 
 // getRequestHost gets a requests host by reading off the forwarded-host
 // header (for proxies) and falls back to use the remote address.
-func getRequestHost(r map[string]string) (string, string) {
-	host, hostOk := r["X-Forwarded-Host"]
-	port, portOk := r["X-Forwarded-Port"]
-
-	if !hostOk && !portOk {
-		return "", ""
-	}
+func getRequestHost(r http.Header) (string, string) {
+	host := r.Get("X-Forwarded-Host")
+	port := r.Get("X-Forwarded-Port")
 
 	return host, port
 }
 
 // getRequestIP gets a requests IP address by reading off the forwarded-for
 // header (for proxies) and falls back to use the remote address.
-func getRequestIP(r map[string]string) string {
-	ip, ok := r["X-Real-Ip"]
+func getRequestIP(r http.Header) string {
+	ip := r.Get("X-Real-Ip")
 	if ip == "" {
-		ip, ok = r["X-Forwarded-For"]
+		ip = r.Get("X-Forwarded-For")
 	}
-	if !ok {
-		return ""
-	}
-
 	return ip
 }
 
