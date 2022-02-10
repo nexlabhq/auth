@@ -155,7 +155,7 @@ func (ja *JWTAuth) SetCustomClaims(uid string, input map[string]interface{}) err
 	return errors.New(ErrCodeUnsupported)
 }
 
-func (ja *JWTAuth) EncodeToken(cred *AccountProvider, claims map[string]interface{}) (*AccessToken, error) {
+func (ja *JWTAuth) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
 
 	now := time.Now()
 	exp := now.Add(ja.config.TTL)
@@ -178,7 +178,21 @@ func (ja *JWTAuth) EncodeToken(cred *AccountProvider, claims map[string]interfac
 		NotBeforeTime:  now.Unix(),
 		ExpirationTime: exp.Unix(),
 		Checksum:       checksum,
-		CustomClaims:   claims,
+	}
+
+	for _, option := range options {
+		if option == nil {
+			continue
+		}
+		switch option.Type() {
+		case "claims":
+			value := option.Value()
+			if claims, ok := value.(map[string]interface{}); ok {
+				payload.CustomClaims = claims
+			} else {
+				return nil, errors.New("claims input must be an map[string]interface{}")
+			}
+		}
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -456,7 +470,7 @@ func (ja *JWTAuth) DeleteUser(uid string) error {
 	return nil
 }
 
-func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string, claims map[string]interface{}) (*AccessToken, error) {
+func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
 	decodedRefreshToken, err := ja.decodeToken(refreshToken)
 	if err != nil {
 		return nil, err
@@ -482,7 +496,7 @@ func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string, claims 
 		return nil, err
 	}
 
-	return ja.EncodeToken(provider, claims)
+	return ja.EncodeToken(provider, options...)
 }
 
 func (ja *JWTAuth) decodeToken(token string) (*jwtPayload, error) {

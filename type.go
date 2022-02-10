@@ -120,11 +120,32 @@ type AuthProvider interface {
 	GetUserByID(id string) (*Account, error)
 	GetUserByEmail(email string) (*Account, error)
 	SetCustomClaims(uid string, input map[string]interface{}) error
-	EncodeToken(cred *AccountProvider, claims map[string]interface{}) (*AccessToken, error)
-	RefreshToken(refreshToken string, accessToken string, claims map[string]interface{}) (*AccessToken, error)
+	EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error)
+	RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error)
 	VerifyToken(token string) (*AccountProvider, map[string]interface{}, error)
 	VerifyPassword(uid string, password string) error
 	ChangePassword(uid string, newPassword string) error
 	SignInWithEmailAndPassword(email string, password string) (*Account, error)
 	SignInWithPhoneAndPassword(phoneCode int, phoneNumber string, password string) (*Account, error)
+}
+
+type AccessTokenOption interface {
+	Type() string
+	Value() interface{}
+}
+
+type tokenClaimsOption struct {
+	value map[string]interface{}
+}
+
+func NewTokenClaims(claims map[string]interface{}) AccessTokenOption {
+	return &tokenClaimsOption{value: claims}
+}
+
+func (tco tokenClaimsOption) Type() string {
+	return "claims"
+}
+
+func (tco tokenClaimsOption) Value() interface{} {
+	return tco.value
 }

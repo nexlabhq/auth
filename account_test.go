@@ -174,7 +174,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 		assert.Equal(t, testClaims, claims)
 	}
 
-	token1, err := manager.EncodeToken(&user.AccountProviders[0], testClaims)
+	token1, err := manager.EncodeToken(&user.AccountProviders[0], NewTokenClaims(testClaims))
 	assert.NoError(t, err)
 
 	doVerify(token1.AccessToken)
@@ -185,7 +185,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	_, _, err = manager.VerifyToken(token1.AccessToken)
 	assert.EqualError(t, err, ErrCodeTokenExpired)
 
-	newToken1, err := manager.RefreshToken(token1.RefreshToken, token1.AccessToken, testClaims)
+	newToken1, err := manager.RefreshToken(token1.RefreshToken, token1.AccessToken, NewTokenClaims(testClaims))
 	assert.Nil(t, err)
 	doVerify(newToken1.AccessToken)
 
@@ -200,7 +200,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, user.ID, userAfterChanged.ID)
 
-	tokenAfterChanged, err := manager.EncodeToken(&userAfterChanged.AccountProviders[0], testClaims)
+	tokenAfterChanged, err := manager.EncodeToken(&userAfterChanged.AccountProviders[0], NewTokenClaims(testClaims))
 	assert.Nil(t, err)
 	doVerify(tokenAfterChanged.AccessToken)
 
