@@ -192,7 +192,7 @@ func (fa *FirebaseAuth) EncodeToken(cred *AccountProvider, customClaims map[stri
 		return nil, err
 	}
 
-	tok, err := authClient.CustomToken(ctx, *cred.AccountID)
+	tok, err := authClient.CustomToken(ctx, cred.ProviderUserID)
 	if err != nil {
 		return nil, err
 	}
