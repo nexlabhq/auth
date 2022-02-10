@@ -20,28 +20,31 @@ func TestJWTEncode(t *testing.T) {
 	})
 
 	uid := uuid.New().String()
-	tokenResult, err := jwtAuth.EncodeToken(uid)
+	tokenResult, err := jwtAuth.EncodeToken(&AccountProvider{
+		ProviderUserID: uid,
+	}, nil)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tokenResult.RefreshToken)
 
 	testVerifyToken := func(tok string) {
-		payload, err := jwtAuth.VerifyToken(tok)
+		payload, claims, err := jwtAuth.VerifyToken(tok)
 		assert.NoError(t, err)
 
 		assert.Equal(t, uid, payload.ProviderUserID)
 		assert.Equal(t, uid, *payload.AccountID)
 		assert.Equal(t, string(AuthJWT), payload.Name)
+		assert.Nil(t, claims)
 	}
 
 	testVerifyToken(tokenResult.AccessToken)
 
-	refreshToken, err := jwtAuth.RefreshToken(tokenResult.RefreshToken, tokenResult.AccessToken)
+	refreshToken, err := jwtAuth.RefreshToken(tokenResult.RefreshToken, tokenResult.AccessToken, nil)
 	assert.NoError(t, err)
 
-	_, err = jwtAuth.RefreshToken(tokenResult.RefreshToken, refreshToken.AccessToken)
+	_, err = jwtAuth.RefreshToken(tokenResult.RefreshToken, refreshToken.AccessToken, nil)
 	assert.EqualError(t, err, ErrCodeTokenMismatched)
 
-	_, err = jwtAuth.VerifyToken(tokenResult.RefreshToken)
+	_, _, err = jwtAuth.VerifyToken(tokenResult.RefreshToken)
 	assert.EqualError(t, err, ErrCodeTokenMismatched)
 
 	testVerifyToken(refreshToken.AccessToken)

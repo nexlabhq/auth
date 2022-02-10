@@ -137,22 +137,22 @@ func (fa *FirebaseAuth) SetCustomClaims(uid string, input map[string]interface{}
 	return authClient.SetCustomUserClaims(ctx, uid, input)
 }
 
-func (fa *FirebaseAuth) VerifyToken(token string) (*AccountProvider, error) {
+func (fa *FirebaseAuth) VerifyToken(token string) (*AccountProvider, map[string]interface{}, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	authToken, err := authClient.VerifyIDToken(ctx, token)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &AccountProvider{
 		Name:           string(AuthFirebase),
 		ProviderUserID: authToken.UID,
-	}, nil
+	}, authToken.Claims, nil
 }
 
 func (fa *FirebaseAuth) ChangePassword(uid string, newPassword string) error {
@@ -185,14 +185,14 @@ func (fa *FirebaseAuth) DeleteUser(uid string) error {
 	return err
 }
 
-func (fa *FirebaseAuth) EncodeToken(uid string) (*AccessToken, error) {
+func (fa *FirebaseAuth) EncodeToken(cred *AccountProvider, customClaims map[string]interface{}) (*AccessToken, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	tok, err := authClient.CustomToken(ctx, uid)
+	tok, err := authClient.CustomToken(ctx, *cred.AccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +215,6 @@ func (fa *FirebaseAuth) VerifyPassword(providerUserId string, password string) e
 	return errors.New(ErrCodeUnsupported)
 }
 
-func (fa *FirebaseAuth) RefreshToken(refreshToken string, accessToken string) (*AccessToken, error) {
+func (fa *FirebaseAuth) RefreshToken(refreshToken string, accessToken string, customClaims map[string]interface{}) (*AccessToken, error) {
 	return nil, errors.New(ErrCodeUnsupported)
 }

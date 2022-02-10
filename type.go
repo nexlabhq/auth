@@ -14,26 +14,30 @@ const (
 )
 
 const (
-	ErrCodeUnsupported                     = "unsupported"
-	ErrCodeTokenExpired                    = "token_expired"
-	ErrCodeJWTInvalidIssuer                = "jwt:invalid_issuer"
-	ErrCodeTokenMismatched                 = "token_mismatched"
-	ErrCodePasswordRequired                = "required:password"
-	ErrCodeCurrentPasswordRequired         = "required:current_password"
-	ErrCodeNewPasswordRequired             = "required:new_password"
-	ErrCodeNewPasswordEqualCurrentPassword = "new_pw_equal_current_pw"
-	ErrCodeEmailRequired                   = "required:email"
-	ErrCodePhoneRequired                   = "required:phone"
-	ErrCodePasswordNotMatch                = "password_not_match"
-	ErrCodeCurrentPasswordNotMatch         = "current_password_not_match"
-	ErrCodeAccountNotFound                 = "account:not_found"
-	ErrCodeAccountExisted                  = "account:existed"
-	ErrCodeAccountNoProvider               = "account:no_provider"
-	ErrCodeAPIKeyInvalidIP                 = "api_key:invalid_ip"
-	ErrCodeAPIKeyInvalidFQDN               = "api_key:invalid_fqdn"
-	ErrCodeAPIKeyExpired                   = "api_key:expired"
-	ErrCodeAPIKeyRequired                  = "api_key:required"
-	ErrCodeAPIKeyNotFound                  = "api_key:not_found"
+	ErrCodeUnsupported                      = "unsupported"
+	ErrCodeTokenExpired                     = "token_expired"
+	ErrCodeJWTInvalidIssuer                 = "jwt:invalid_issuer"
+	ErrCodeTokenMismatched                  = "token_mismatched"
+	ErrCodeTokenAudienceMismatched          = "token_audience_mismatched"
+	ErrCodeRefreshTokenAudienceMismatched   = "refresh_token_audience_mismatched"
+	ErrCodePasswordRequired                 = "required:password"
+	ErrCodeCurrentPasswordRequired          = "required:current_password"
+	ErrCodeNewPasswordRequired              = "required:new_password"
+	ErrCodeNewPasswordEqualCurrentPassword  = "new_pw_equal_current_pw"
+	ErrCodeEmailRequired                    = "required:email"
+	ErrCodePhoneRequired                    = "required:phone"
+	ErrCodePasswordNotMatch                 = "password_not_match"
+	ErrCodeCurrentPasswordNotMatch          = "current_password_not_match"
+	ErrCodeAccountNotFound                  = "account:not_found"
+	ErrCodeAccountExisted                   = "account:existed"
+	ErrCodeAccountNoProvider                = "account:no_provider"
+	ErrCodeAPIKeyInvalidIP                  = "api_key:invalid_ip"
+	ErrCodeAPIKeyInvalidFQDN                = "api_key:invalid_fqdn"
+	ErrCodeAPIKeyExpired                    = "api_key:expired"
+	ErrCodeAPIKeyRequired                   = "api_key:required"
+	ErrCodeAPIKeyNotFound                   = "api_key:not_found"
+	ErrCodeUpdateProviderNonExistentAccount = "update_provider_nonexistent_account"
+	ErrCodeUpdatePasswordNonExistentAccount = "update_password_nonexistent_account"
 )
 
 func GetAuthProviderTypes() []AuthProviderType {
@@ -76,12 +80,14 @@ type account_bool_exp map[string]interface{}
 type account_provider_bool_exp map[string]interface{}
 
 type AccountProvider struct {
-	AccountID      *string `json:"account_id,omitempty" graphql:"account_id"`
-	Name           string  `json:"provider_name" graphql:"provider_name"`
-	ProviderUserID string  `json:"provider_user_id" graphql:"provider_user_id"`
+	AccountID      *string                `json:"account_id,omitempty" graphql:"account_id"`
+	Name           string                 `json:"provider_name" graphql:"provider_name"`
+	ProviderUserID string                 `json:"provider_user_id" graphql:"provider_user_id"`
+	Metadata       map[string]interface{} `json:"metadata" graphql:"metadata" scalar:"true"`
 }
 
 type account_provider_insert_input AccountProvider
+type account_provider_set_input map[string]interface{}
 
 type BaseAccount struct {
 	ID          string `json:"id" graphql:"id"`
@@ -114,9 +120,9 @@ type AuthProvider interface {
 	GetUserByID(id string) (*Account, error)
 	GetUserByEmail(email string) (*Account, error)
 	SetCustomClaims(uid string, input map[string]interface{}) error
-	EncodeToken(uid string) (*AccessToken, error)
-	RefreshToken(refreshToken string, accessToken string) (*AccessToken, error)
-	VerifyToken(token string) (*AccountProvider, error)
+	EncodeToken(cred *AccountProvider, claims map[string]interface{}) (*AccessToken, error)
+	RefreshToken(refreshToken string, accessToken string, claims map[string]interface{}) (*AccessToken, error)
+	VerifyToken(token string) (*AccountProvider, map[string]interface{}, error)
 	VerifyPassword(uid string, password string) error
 	ChangePassword(uid string, newPassword string) error
 	SignInWithEmailAndPassword(email string, password string) (*Account, error)

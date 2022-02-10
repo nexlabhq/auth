@@ -14,22 +14,26 @@ import (
 )
 
 type jwtPayload struct {
-	Issuer         string `json:"iss"`
-	Subject        string `json:"sub"`
-	Audience       string `json:"aud"`
-	ExpirationTime int64  `json:"exp"`
-	NotBeforeTime  int64  `json:"nbt"`
-	IssuedAt       int64  `json:"iat"`
-	JwtID          string `json:"jti"`
+	Issuer         string                 `json:"iss"`
+	Subject        string                 `json:"sub"`
+	Audience       string                 `json:"aud"`
+	ExpirationTime int64                  `json:"exp"`
+	NotBeforeTime  int64                  `json:"nbt"`
+	IssuedAt       int64                  `json:"iat"`
+	JwtID          string                 `json:"jti"`
+	Checksum       string                 `json:"checksum"`
+	CustomClaims   map[string]interface{} `json:"https://hasura.io/jwt/claims"`
 }
 
 type JWTAuthConfig struct {
-	Cost       int           `envconfig:"JWT_HASH_COST" default:"10"`
-	SessionKey string        `envconfig:"SESSION_KEY"`
-	TTL        time.Duration `envconfig:"SESSION_TTL" default:"1h"`
-	RefreshTTL time.Duration `envconfig:"SESSION_REFRESH_TTL" default:"0ms"`
-	Issuer     string        `envconfig:"JWT_ISSUER"`
-	Algorithm  string        `envconfig:"JWT_ALGORITHM" default:"HS256"`
+	Cost           int           `envconfig:"JWT_HASH_COST" default:"10"`
+	SessionKey     string        `envconfig:"SESSION_KEY"`
+	TTL            time.Duration `envconfig:"SESSION_TTL" default:"1h"`
+	RefreshTTL     time.Duration `envconfig:"SESSION_REFRESH_TTL" default:"0ms"`
+	Issuer         string        `envconfig:"JWT_ISSUER"`
+	Algorithm      string        `envconfig:"JWT_ALGORITHM" default:"HS256"`
+	HasChecksum    bool          `envconfig:"JWT_CHECKSUM" default:"false"`
+	ChecksumLength int           `envconfig:"JWT_CHECKSUM_LENGTH" default:"8"`
 }
 
 func (jac JWTAuthConfig) Validate() error {
@@ -56,6 +60,10 @@ func NewJWTAuth(client *gql.Client, config JWTAuthConfig) *JWTAuth {
 		config.Algorithm = jose.HS256
 	}
 
+	if config.HasChecksum && config.ChecksumLength == 0 {
+		config.ChecksumLength = 8
+	}
+
 	return &JWTAuth{
 		client: client,
 		config: config,
@@ -79,6 +87,10 @@ func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	metadata := map[string]interface{}{
+		"checksum": genRandomString(ja.config.ChecksumLength),
+	}
 	return &Account{
 		BaseAccount: BaseAccount{
 			ID:          input.ID,
@@ -94,6 +106,7 @@ func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
 			{
 				Name:           string(AuthJWT),
 				ProviderUserID: input.ID,
+				Metadata:       metadata,
 			},
 		},
 	}, nil
@@ -142,19 +155,30 @@ func (ja *JWTAuth) SetCustomClaims(uid string, input map[string]interface{}) err
 	return errors.New(ErrCodeUnsupported)
 }
 
-func (ja *JWTAuth) EncodeToken(uid string) (*AccessToken, error) {
+func (ja *JWTAuth) EncodeToken(cred *AccountProvider, claims map[string]interface{}) (*AccessToken, error) {
 
 	now := time.Now()
 	exp := now.Add(ja.config.TTL)
 	jwtID := uuid.New().String()
+	checksum := ""
+	if cred.Metadata != nil {
+		if chk, ok := cred.Metadata["checksum"]; ok {
+			if sc, ok := chk.(string); ok {
+				checksum = sc
+			}
+		}
+	}
+
 	payload := jwtPayload{
 		JwtID:          jwtID,
 		Issuer:         ja.config.Issuer,
-		Subject:        uid,
+		Subject:        cred.ProviderUserID,
 		Audience:       "access",
 		IssuedAt:       now.Unix(),
 		NotBeforeTime:  now.Unix(),
 		ExpirationTime: exp.Unix(),
+		Checksum:       checksum,
+		CustomClaims:   claims,
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -177,11 +201,12 @@ func (ja *JWTAuth) EncodeToken(uid string) (*AccessToken, error) {
 		refreshPayload := jwtPayload{
 			JwtID:          ja.genRefreshTokenID(jwtID),
 			Issuer:         ja.config.Issuer,
-			Subject:        uid,
+			Subject:        cred.ProviderUserID,
 			Audience:       "refresh",
 			IssuedAt:       now.Unix(),
 			NotBeforeTime:  now.Unix(),
 			ExpirationTime: now.Add(ja.config.RefreshTTL).Unix(),
+			Checksum:       checksum,
 		}
 
 		refreshPayloadBytes, err := json.Marshal(refreshPayload)
@@ -207,22 +232,75 @@ func (ja *JWTAuth) EncodeToken(uid string) (*AccessToken, error) {
 	}, nil
 }
 
-func (ja *JWTAuth) VerifyToken(token string) (*AccountProvider, error) {
+func (ja *JWTAuth) validateTokenChecksum(userId string, checksum string) (*AccountProvider, error) {
 
-	result, err := ja.decodeToken(token)
+	if !ja.config.HasChecksum {
+		return &AccountProvider{
+			AccountID:      &userId,
+			Name:           string(AuthJWT),
+			ProviderUserID: userId,
+		}, nil
+	}
+
+	// fetch account provider and validate checksum
+	var query struct {
+		AccountProviders []AccountProvider `graphql:"account_provider(where: $where, limit: 1)"`
+	}
+
+	variables := map[string]interface{}{
+		"where": account_provider_bool_exp{
+			"provider_user_id": map[string]string{
+				"_eq": userId,
+			},
+			"provider_name": map[string]string{
+				"_eq": string(string(AuthJWT)),
+			},
+		},
+	}
+
+	err := ja.client.Query(context.Background(), &query, variables, gql.OperationName("GetProviders"))
+
 	if err != nil {
 		return nil, err
 	}
 
-	if result.Audience != "access" {
-		return nil, errors.New(ErrCodeTokenMismatched)
+	if len(query.AccountProviders) == 0 {
+		return nil, errors.New(ErrCodeAccountNotFound)
 	}
 
-	return &AccountProvider{
-		AccountID:      &result.Subject,
-		Name:           string(AuthJWT),
-		ProviderUserID: result.Subject,
-	}, nil
+	userChecksum := ""
+	provider := query.AccountProviders[0]
+	if provider.Metadata != nil {
+		iChecksum, ok := provider.Metadata["checksum"]
+		if ok {
+			userChecksum, _ = iChecksum.(string)
+		}
+	}
+
+	if userChecksum != checksum {
+		return nil, errors.New(ErrCodeTokenExpired)
+	}
+
+	return &provider, nil
+}
+
+func (ja *JWTAuth) VerifyToken(token string) (*AccountProvider, map[string]interface{}, error) {
+
+	result, err := ja.decodeToken(token)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if result.Audience != "access" {
+		return nil, nil, errors.New(ErrCodeTokenAudienceMismatched)
+	}
+
+	provider, err := ja.validateTokenChecksum(result.Subject, result.Checksum)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return provider, result.CustomClaims, nil
 }
 
 func (ja *JWTAuth) ChangePassword(uid string, newPassword string) error {
@@ -252,7 +330,58 @@ func (ja *JWTAuth) ChangePassword(uid string, newPassword string) error {
 
 	err = ja.client.Mutate(ctx, &mutation, variables, gql.OperationName("UpdateAccountPassword"))
 
+	if err != nil {
+		return err
+	}
+
+	if mutation.UpdateAccounts.AffectedRows == 0 {
+		return errors.New(ErrCodeUpdatePasswordNonExistentAccount)
+	}
+
+	if ja.config.HasChecksum {
+		err = ja.updateProviderChecksum(uid)
+	}
+
 	return err
+}
+
+func (ja *JWTAuth) updateProviderChecksum(uid string) error {
+	ctx := context.Background()
+
+	checksum := genRandomString(ja.config.ChecksumLength)
+	metadata := map[string]string{
+		"checksum": checksum,
+	}
+	var mutation struct {
+		UpdateAccountProviders struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"update_account_provider(where: $where, _set: $setValues)"`
+	}
+
+	variables := map[string]interface{}{
+		"where": account_provider_bool_exp{
+			"account_id": map[string]string{
+				"_eq": uid,
+			},
+			"provider_name": map[string]string{
+				"_eq": string(AuthJWT),
+			},
+		},
+		"setValues": account_provider_set_input{
+			"metadata": metadata,
+		},
+	}
+
+	err := ja.client.Mutate(ctx, &mutation, variables, gql.OperationName("UpdateAccountProviders"))
+
+	if err != nil {
+		return err
+	}
+
+	if mutation.UpdateAccountProviders.AffectedRows == 0 {
+		return errors.New(ErrCodeUpdateProviderNonExistentAccount)
+	}
+	return nil
 }
 
 func (ja *JWTAuth) SignInWithEmailAndPassword(email string, password string) (*Account, error) {
@@ -327,14 +456,14 @@ func (ja *JWTAuth) DeleteUser(uid string) error {
 	return nil
 }
 
-func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string) (*AccessToken, error) {
+func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string, claims map[string]interface{}) (*AccessToken, error) {
 	decodedRefreshToken, err := ja.decodeToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
 
 	if decodedRefreshToken.Audience != "refresh" {
-		return nil, errors.New(ErrCodeTokenMismatched)
+		return nil, errors.New(ErrCodeRefreshTokenAudienceMismatched)
 	}
 
 	decodedToken, err := ja.decodeToken(accessToken)
@@ -348,7 +477,12 @@ func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string) (*Acces
 		return nil, errors.New(ErrCodeTokenMismatched)
 	}
 
-	return ja.EncodeToken(decodedRefreshToken.Subject)
+	provider, err := ja.validateTokenChecksum(decodedToken.Subject, decodedToken.Checksum)
+	if err != nil {
+		return nil, err
+	}
+
+	return ja.EncodeToken(provider, claims)
 }
 
 func (ja *JWTAuth) decodeToken(token string) (*jwtPayload, error) {

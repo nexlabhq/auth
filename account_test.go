@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package auth
 
 import (
@@ -79,6 +76,19 @@ func getFirebaseIdToken(token string) (string, error) {
 	return result.IDToken, nil
 }
 
+func deleteUserByEmail(am *AccountManager, email string) error {
+	user, err := am.FindAccountByEmail(email)
+	if err != nil {
+		return err
+	}
+
+	if user == nil {
+		return nil
+	}
+
+	return am.DeleteUser(user.ID)
+}
+
 func TestAuthMangerAs(t *testing.T) {
 	manager, err := NewAccountManager(AccountManagerConfig{
 		GQLClient: setupHasuraClient(),
@@ -111,12 +121,87 @@ func TestJWTAuthProvider(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	token1, err := manager.EncodeToken("user1")
+	token1, err := manager.EncodeToken(&AccountProvider{
+		ProviderUserID: "user1",
+	}, nil)
 	assert.NoError(t, err)
 
-	acc1, err := manager.VerifyToken(token1.AccessToken)
+	acc1, claims1, err := manager.VerifyToken(token1.AccessToken)
 	assert.Error(t, err)
 	assert.Nil(t, acc1)
+	assert.Nil(t, claims1)
+}
+
+func TestJWTAuthProviderChecksum(t *testing.T) {
+	manager, err := NewAccountManager(AccountManagerConfig{
+		GQLClient: setupHasuraClient(),
+		JWT: &JWTAuthConfig{
+			SessionKey:  "random",
+			TTL:         3 * time.Second,
+			RefreshTTL:  10 * time.Second,
+			HasChecksum: true,
+		},
+		DefaultRole:     "user",
+		DefaultProvider: "jwt",
+		CreateFromToken: true,
+	})
+	assert.NoError(t, err)
+
+	email := "jwt-test@example.com"
+	password := "123456"
+	err = deleteUserByEmail(manager, email)
+	assert.Nil(t, err)
+
+	user, err := manager.CreateAccountWithProvider(&CreateAccountInput{
+		Email:    email,
+		Password: password,
+		Verified: true,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, user)
+
+	testClaims := map[string]interface{}{
+		"foo": "bar",
+	}
+	doVerify := func(token string) {
+		acc, claims, err := manager.VerifyToken(token)
+		assert.Nil(t, err)
+
+		assert.Equal(t, user.ID, acc.ID)
+		assert.Equal(t, testClaims, claims)
+	}
+
+	token1, err := manager.EncodeToken(&user.AccountProviders[0], testClaims)
+	assert.NoError(t, err)
+
+	doVerify(token1.AccessToken)
+
+	// test token expired
+	time.Sleep(3 * time.Second)
+
+	_, _, err = manager.VerifyToken(token1.AccessToken)
+	assert.EqualError(t, err, ErrCodeTokenExpired)
+
+	newToken1, err := manager.RefreshToken(token1.RefreshToken, token1.AccessToken, testClaims)
+	assert.Nil(t, err)
+	doVerify(newToken1.AccessToken)
+
+	newPassword := "password_changed"
+	err = manager.ChangePassword(user.ID, password, newPassword, false)
+	assert.Nil(t, err)
+
+	_, _, err = manager.VerifyToken(newToken1.AccessToken)
+	assert.EqualError(t, err, ErrCodeTokenExpired)
+
+	userAfterChanged, err := manager.FindAccountByID(user.ID)
+	assert.Nil(t, err)
+	assert.Equal(t, user.ID, userAfterChanged.ID)
+
+	tokenAfterChanged, err := manager.EncodeToken(&userAfterChanged.AccountProviders[0], testClaims)
+	assert.Nil(t, err)
+	doVerify(tokenAfterChanged.AccessToken)
+
+	deleteUserByEmail(manager, user.Email)
 }
 
 func TestFirebaseAuthProvider(t *testing.T) {
@@ -160,15 +245,18 @@ func TestFirebaseAuthProvider(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	customToken, err := provider.EncodeToken(user1.ID)
+	customToken, err := provider.EncodeToken(&AccountProvider{
+		ProviderUserID: user1.ID,
+	}, nil)
 	assert.NoError(t, err)
 
 	idToken, err := getFirebaseIdToken(customToken.AccessToken)
 	assert.NoError(t, err)
 
-	acc1, err := manager.VerifyToken(idToken)
+	acc1, claims, err := manager.VerifyToken(idToken)
 	assert.NoError(t, err)
 	assert.Equal(t, user1.ID, acc1.AccountProviders[0].ProviderUserID)
+	assert.Nil(t, claims)
 
 	acc1g, err := manager.FindAccountByID(acc1.ID)
 	assert.NoError(t, err)

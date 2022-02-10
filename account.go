@@ -352,8 +352,8 @@ func (am *AccountManager) InsertAccount(input map[string]interface{}) (string, e
 	return insertAccountMutation.InsertAccount.Returning[0].ID, nil
 }
 
-// InsertProvider insert account provider to the database
-func (am *AccountManager) InsertProvider(input AccountProvider) error {
+// CreateProvider insert account provider to the database
+func (am *AccountManager) CreateProvider(input AccountProvider) error {
 	var insertProviders struct {
 		InsertProviders struct {
 			AffectedRows int `graphql:"affected_rows"`
@@ -386,27 +386,27 @@ func (am *AccountManager) InsertProvider(input AccountProvider) error {
 }
 
 // VerifyToken validate and return provider user id
-func (am *AccountManager) VerifyToken(token string) (*Account, error) {
-	provider, err := am.getCurrentProvider().VerifyToken(token)
+func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interface{}, error) {
+	provider, claims, err := am.getCurrentProvider().VerifyToken(token)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	acc, err := am.findAccountByProviderUser(provider.ProviderUserID)
 	if err != nil || acc != nil {
-		return acc, err
+		return acc, claims, err
 	}
 
 	if !am.createFromToken {
-		return nil, errors.New(ErrCodeAccountNoProvider)
+		return nil, nil, errors.New(ErrCodeAccountNoProvider)
 	}
 
 	// allow create account with provider info
 	acc, err = am.getCurrentProvider().GetUserByID(provider.ProviderUserID)
 	if err != nil || (acc != nil && acc.ID != "") {
-		return acc, err
+		return acc, nil, err
 	} else if acc == nil {
-		return nil, errors.New(ErrCodeAccountNotFound)
+		return nil, nil, errors.New(ErrCodeAccountNotFound)
 	}
 
 	acc.ID = genID()
@@ -433,12 +433,12 @@ func (am *AccountManager) VerifyToken(token string) (*Account, error) {
 
 	_, err = am.InsertAccount(accInsertInput)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	acc.Role = am.defaultRole
 
-	return acc, nil
+	return acc, claims, nil
 }
 
 func (am *AccountManager) findAccountByProviderUser(userId string) (*Account, error) {
@@ -494,12 +494,12 @@ func (am *AccountManager) SignInWithPhoneAndPassword(phoneCode int, phoneNumber 
 	return am.getCurrentProvider().SignInWithPhoneAndPassword(phoneCode, phoneNumber, password)
 }
 
-func (am *AccountManager) EncodeToken(uid string) (*AccessToken, error) {
-	return am.getCurrentProvider().EncodeToken(uid)
+func (am *AccountManager) EncodeToken(cred *AccountProvider, customClaims map[string]interface{}) (*AccessToken, error) {
+	return am.getCurrentProvider().EncodeToken(cred, customClaims)
 }
 
-func (am *AccountManager) RefreshToken(refreshToken string, accessToken string) (*AccessToken, error) {
-	return am.getCurrentProvider().RefreshToken(refreshToken, accessToken)
+func (am *AccountManager) RefreshToken(refreshToken string, accessToken string, customClaims map[string]interface{}) (*AccessToken, error) {
+	return am.getCurrentProvider().RefreshToken(refreshToken, accessToken, customClaims)
 }
 
 // ChangePassword change all providers's password of current user
@@ -608,7 +608,7 @@ func (am *AccountManager) DeleteUser(id string) error {
 
 	// delete user from authentication providers
 	for _, ap := range query.AccountProviders {
-		err = am.As(AuthProviderType(ap.Name)).DeleteUser(ap.ProviderUserID)
+		err = am.As(AuthProviderType(ap.Name)).getCurrentProvider().DeleteUser(ap.ProviderUserID)
 		if err != nil {
 			return err
 		}
