@@ -45,7 +45,7 @@ func TestJWTEncode(t *testing.T) {
 	assert.EqualError(t, err, ErrCodeTokenMismatched)
 
 	_, _, err = jwtAuth.VerifyToken(tokenResult.RefreshToken)
-	assert.EqualError(t, err, ErrCodeTokenMismatched)
+	assert.EqualError(t, err, ErrCodeTokenAudienceMismatched)
 
 	testVerifyToken(refreshToken.AccessToken)
 }
