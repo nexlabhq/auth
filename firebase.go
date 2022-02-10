@@ -185,7 +185,7 @@ func (fa *FirebaseAuth) DeleteUser(uid string) error {
 	return err
 }
 
-func (fa *FirebaseAuth) EncodeToken(cred *AccountProvider, customClaims map[string]interface{}) (*AccessToken, error) {
+func (fa *FirebaseAuth) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
 	if err != nil {
@@ -215,6 +215,6 @@ func (fa *FirebaseAuth) VerifyPassword(providerUserId string, password string) e
 	return errors.New(ErrCodeUnsupported)
 }
 
-func (fa *FirebaseAuth) RefreshToken(refreshToken string, accessToken string, customClaims map[string]interface{}) (*AccessToken, error) {
+func (fa *FirebaseAuth) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
 	return nil, errors.New(ErrCodeUnsupported)
 }

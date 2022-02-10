@@ -494,12 +494,12 @@ func (am *AccountManager) SignInWithPhoneAndPassword(phoneCode int, phoneNumber 
 	return am.getCurrentProvider().SignInWithPhoneAndPassword(phoneCode, phoneNumber, password)
 }
 
-func (am *AccountManager) EncodeToken(cred *AccountProvider, customClaims map[string]interface{}) (*AccessToken, error) {
-	return am.getCurrentProvider().EncodeToken(cred, customClaims)
+func (am *AccountManager) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
+	return am.getCurrentProvider().EncodeToken(cred, options...)
 }
 
-func (am *AccountManager) RefreshToken(refreshToken string, accessToken string, customClaims map[string]interface{}) (*AccessToken, error) {
-	return am.getCurrentProvider().RefreshToken(refreshToken, accessToken, customClaims)
+func (am *AccountManager) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
+	return am.getCurrentProvider().RefreshToken(refreshToken, accessToken, options...)
 }
 
 // ChangePassword change all providers's password of current user
