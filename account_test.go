@@ -256,10 +256,9 @@ func TestFirebaseAuthProvider(t *testing.T) {
 	idToken, err := getFirebaseIdToken(customToken.AccessToken)
 	assert.NoError(t, err)
 
-	acc1, claims, err := manager.VerifyToken(idToken)
+	acc1, _, err := manager.VerifyToken(idToken)
 	assert.NoError(t, err)
 	assert.Equal(t, user1.ID, acc1.AccountProviders[0].ProviderUserID)
-	assert.Nil(t, claims)
 
 	acc1g, err := manager.FindAccountByID(acc1.ID)
 	assert.NoError(t, err)
