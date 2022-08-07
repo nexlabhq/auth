@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package auth
 
 import (
@@ -90,6 +87,11 @@ func deleteUserByEmail(am *AccountManager, email string) error {
 	}
 
 	return am.DeleteUser(user.ID)
+}
+
+func account_cleanup(t *testing.T, am *AccountManager) {
+	err := am.DeleteUsers(map[string]interface{}{})
+	assert.NoError(t, err)
 }
 
 func TestAuthMangerAs(t *testing.T) {
@@ -271,4 +273,101 @@ func TestFirebaseAuthProvider(t *testing.T) {
 
 	err = manager.DeleteUser(acc1.ID)
 	assert.NoError(t, err)
+}
+
+func TestJWTAuthOTP(t *testing.T) {
+	manager, err := NewAccountManager(AccountManagerConfig{
+		GQLClient: setupHasuraClient(),
+		JWT: &JWTAuthConfig{
+			SessionKey: "random",
+			TTL:        time.Hour,
+		},
+		DefaultRole:     "user",
+		DefaultProvider: "jwt",
+		CreateFromToken: true,
+		OTP: AuthOTPConfig{
+			Enabled:           true,
+			DevMode:           true,
+			DevOTPCode:        "123456",
+			OTPLength:         6,
+			LoginLimit:        2,
+			LoginDisableLimit: 3,
+			LoginLockDuration: time.Second,
+			TTL:               time.Minute,
+		},
+	})
+	assert.NoError(t, err)
+
+	defer account_cleanup(t, manager)
+
+	phoneNumber := "0900000000"
+
+	otp := manager.GenerateOTP(nil, 84, phoneNumber)
+	assert.Equal(t, "", otp.Error)
+	assert.Equal(t, 6, len(otp.Code))
+
+	otp2 := manager.GenerateOTP(nil, 84, phoneNumber)
+	assert.Equal(t, ErrCodeOTPAlreadySent, otp2.Error)
+
+	tok1, err := manager.VerifyOTP(nil, VerifyOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+		OTP:         otp.Code,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, tok1)
+
+	_, err = manager.VerifyOTP(nil, VerifyOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+		OTP:         otp.Code,
+	})
+	assert.EqualError(t, err, ErrCodeInvalidOTP)
+
+	opt4 := manager.GenerateOTP(nil, 84, phoneNumber)
+	assert.Equal(t, "", opt4.Error)
+	assert.Equal(t, 6, len(opt4.Code))
+
+	_, err = manager.VerifyOTP(nil, VerifyOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+		OTP:         "111111",
+	})
+	assert.EqualError(t, err, ErrCodeInvalidOTP)
+
+	_, err = manager.VerifyOTP(nil, VerifyOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+		OTP:         "111111",
+	})
+	assert.EqualError(t, err, ErrCodeInvalidOTP)
+
+	_, err = manager.VerifyOTP(nil, VerifyOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+		OTP:         "111111",
+	})
+	assert.EqualError(t, err, ErrCodeInvalidOTP)
+
+	otp5 := manager.GenerateOTP(nil, 84, phoneNumber)
+	assert.Equal(t, ErrCodeAccountTemporarilyLocked, otp5.Error)
+
+	assert.EqualError(t, err, ErrCodeInvalidOTP)
+	time.Sleep(2 * time.Second)
+
+	_, err = manager.VerifyOTP(nil, VerifyOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+		OTP:         "111111",
+	})
+	assert.EqualError(t, err, ErrCodeInvalidOTP)
+
+	otp6 := manager.GenerateOTP(nil, 84, phoneNumber)
+	assert.Equal(t, ErrCodeAccountDisabled, otp6.Error)
+	_, err = manager.VerifyOTP(nil, VerifyOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+		OTP:         "111111",
+	})
+	assert.EqualError(t, err, ErrCodeAccountDisabled)
 }

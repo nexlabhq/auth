@@ -15,13 +15,18 @@ const (
 	letterIdxBits = 6                    // 6 bits to represent a letter index
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
 	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
+	digits        = "0123456789"
 	alphaDigits   = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
 var src = rand.NewSource(time.Now().UnixNano())
 
 // genRandomString generate random string with fixed length
-func genRandomString(n int) string {
+func genRandomString(n int, allowedCharacters ...string) string {
+	allowedChars := alphaDigits
+	if len(allowedCharacters) > 0 {
+		allowedChars = allowedCharacters[0]
+	}
 	sb := strings.Builder{}
 	sb.Grow(n)
 	// A src.Int63() generates 63 random bits, enough for letterIdxMax characters!
@@ -29,8 +34,8 @@ func genRandomString(n int) string {
 		if remain == 0 {
 			cache, remain = src.Int63(), letterIdxMax
 		}
-		if idx := int(cache & letterIdxMask); idx < len(alphaDigits) {
-			sb.WriteByte(alphaDigits[idx])
+		if idx := int(cache & letterIdxMask); idx < len(allowedChars) {
+			sb.WriteByte(allowedChars[idx])
 			i--
 		}
 		cache >>= letterIdxBits
@@ -80,8 +85,8 @@ func formatI18nPhoneNumber(code int, phone string) string {
 	return fmt.Sprintf("+%d%s", code, phone)
 }
 
-func parseI18nPhoneNumber(rawNumber string, defaultRegion string) (int, string, error) {
-	pn, err := libphonenumber.Parse(rawNumber, defaultRegion)
+func parseI18nPhoneNumber(rawNumber string, countryCode int) (int, string, error) {
+	pn, err := libphonenumber.Parse(rawNumber, libphonenumber.GetRegionCodeForCountryCode(countryCode))
 	if err != nil {
 		return 0, "", err
 	}
@@ -90,4 +95,39 @@ func parseI18nPhoneNumber(rawNumber string, defaultRegion string) (int, string, 
 	return int(pn.GetCountryCode()),
 		fmt.Sprintf("%0*d", int(pn.GetNumberOfLeadingZeros())+len(sNumber), pn.GetNationalNumber()),
 		nil
+}
+
+func getRequestIPFromSession(sessionVariables map[string]string) *string {
+	if ip, ok := sessionVariables[XHasuraRequestIP]; ok {
+		return &ip
+	}
+	return nil
+}
+
+type GeoPoint struct {
+	Type        string    `json:"type"`
+	Coordinates []float64 `json:"coordinates"`
+}
+
+func getPositionFromSession(sessionVariables map[string]string) (*GeoPoint, error) {
+	result := &GeoPoint{
+		Type:        "Point",
+		Coordinates: []float64{0, 0},
+	}
+	if l, ok := sessionVariables[XHasuraLongitude]; ok && l != "" {
+		fl, err := strconv.ParseFloat(l, 64)
+		if err == nil {
+			return nil, err
+		}
+		result.Coordinates[0] = fl
+	}
+	if l, ok := sessionVariables[XHasuraLatitude]; ok && l != "" {
+		fl, err := strconv.ParseFloat(l, 64)
+		if err == nil {
+			return nil, err
+		}
+		result.Coordinates[1] = fl
+	}
+
+	return result, nil
 }

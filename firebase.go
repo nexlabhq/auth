@@ -104,7 +104,7 @@ func (fa *FirebaseAuth) applyUser(u *auth.UserRecord, err error) (*Account, erro
 	phoneCode := 0
 	phoneNumber := ""
 	if u.PhoneNumber != "" {
-		phoneCode, phoneNumber, err = parseI18nPhoneNumber(u.PhoneNumber, "")
+		phoneCode, phoneNumber, err = parseI18nPhoneNumber(u.PhoneNumber, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -217,4 +217,68 @@ func (fa *FirebaseAuth) VerifyPassword(providerUserId string, password string) e
 
 func (fa *FirebaseAuth) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
 	return nil, errors.New(ErrCodeUnsupported)
+}
+
+func (fa *FirebaseAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, error) {
+	ctx := context.Background()
+	authClient, err := fa.App.Auth(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	phoneNumber := formatI18nPhoneNumber(input.PhoneCode, input.PhoneNumber)
+	user, err := authClient.GetUserByPhoneNumber(context.TODO(), phoneNumber)
+
+	if err != nil && !auth.IsUserNotFound(err) {
+		return nil, err
+	}
+
+	if user == nil {
+		params := (&auth.UserToCreate{})
+
+		if input.EmailEnabled {
+			params = params.Email(input.Email).
+				EmailVerified(input.Verified)
+		}
+
+		if input.DisplayName != "" {
+			params = params.DisplayName(input.DisplayName)
+		}
+		if input.Password != "" {
+			params = params.Password(input.Password)
+		}
+
+		if input.ID == "" {
+			input.ID = genID()
+		}
+		params = params.UID(input.ID)
+
+		if input.PhoneNumber != "" && input.PhoneEnabled {
+			params = params.PhoneNumber(phoneNumber)
+		}
+
+		user, err = authClient.CreateUser(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &Account{
+		BaseAccount: BaseAccount{
+			ID:          input.ID,
+			Email:       input.Email,
+			DisplayName: input.DisplayName,
+			PhoneCode:   input.PhoneCode,
+			PhoneNumber: input.PhoneNumber,
+			Role:        input.Role,
+			Verified:    input.Verified,
+		},
+		AccountProviders: []AccountProvider{
+			{
+				Name:           string(AuthFirebase),
+				ProviderUserID: user.UID,
+			},
+		},
+	}, nil
 }

@@ -4,20 +4,35 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
+	"time"
 
 	firebase "firebase.google.com/go/v4"
+	"github.com/hasura/go-graphql-client"
 	gql "github.com/hasura/go-graphql-client"
 )
 
+// AuthOTPConfig contains authentication configurations from sms otp
+type AuthOTPConfig struct {
+	Enabled           bool          `envconfig:"AUTH_OTP_ENABLED"`
+	OTPLength         uint          `envconfig:"AUTH_OTP_LENGTH" default:"6"`
+	LoginLimit        uint          `envconfig:"AUTH_OTP_LOGIN_LIMIT" default:"3"`
+	LoginDisableLimit uint          `envconfig:"AUTH_OTP_DISABLE_LIMIT" default:"9"`
+	LoginLockDuration time.Duration `envconfig:"AUTH_OTP_LOCK_DURATION" default:"10m"`
+	TTL               time.Duration `envconfig:"AUTH_OTP_TTL" default:"60s"`
+	DevMode           bool          `envconfig:"AUTH_OTP_DEV" default:"false"`
+	DevOTPCode        string        `envconfig:"AUTH_OTP_DEV_CODE" default:"123456"`
+}
+
 // AccountManagerConfig config options for AccountManager
 type AccountManagerConfig struct {
-	FirebaseApp     *firebase.App
-	GQLClient       *gql.Client
-	JWT             *JWTAuthConfig
-	DefaultProvider AuthProviderType
-	DefaultRole     string
-	CreateFromToken bool
+	FirebaseApp *firebase.App `ignored:"true"`
+	GQLClient   *gql.Client   `ignored:"true"`
+	JWT         *JWTAuthConfig
+	OTP         AuthOTPConfig
+
+	CreateFromToken bool             `envconfig:"AUTH_CREATE_FROM_TOKEN" default:"false"`
+	DefaultProvider AuthProviderType `envconfig:"DEFAULT_AUTH_PROVIDER" required:"true"`
+	DefaultRole     string           `envconfig:"DEFAULT_ROLE" required:"true"`
 }
 
 // AccountManager account business method
@@ -27,6 +42,7 @@ type AccountManager struct {
 	providerType    AuthProviderType
 	defaultRole     string
 	createFromToken bool
+	otp             AuthOTPConfig
 }
 
 // NewAccountManager create new AccountManager instance
@@ -65,6 +81,7 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 		providerType:    config.DefaultProvider,
 		defaultRole:     config.DefaultRole,
 		createFromToken: config.CreateFromToken,
+		otp:             config.OTP,
 	}, nil
 }
 
@@ -346,7 +363,7 @@ func (am *AccountManager) InsertAccount(input map[string]interface{}) (string, e
 	}
 
 	if len(insertAccountMutation.InsertAccount.Returning) == 0 {
-		return "", fmt.Errorf("can't insert account")
+		return "", errors.New(ErrCodeAccountInsertZero)
 	}
 
 	return insertAccountMutation.InsertAccount.Returning[0].ID, nil
@@ -378,7 +395,7 @@ func (am *AccountManager) CreateProvider(input AccountProvider) error {
 	}
 
 	if insertProviders.InsertProviders.AffectedRows == 0 {
-		return fmt.Errorf("insert zero account provider")
+		return errors.New(ErrCodeAccountProviderInsertZero)
 	}
 
 	return nil
@@ -630,4 +647,415 @@ func (am *AccountManager) DeleteUser(id string) error {
 
 	return am.gqlClient.Mutate(context.Background(), &deleteMutation, deleteVariables, gql.OperationName("DeleteAccountById"))
 
+}
+
+// DeleteUsers delete many users by condition
+func (am *AccountManager) DeleteUsers(where map[string]interface{}) error {
+	var query struct {
+		Accounts []Account `graphql:"account(where: $where)"`
+	}
+
+	queryVariables := map[string]interface{}{
+		"where": account_bool_exp(where),
+	}
+
+	err := am.gqlClient.Query(context.Background(), &query, queryVariables, gql.OperationName("GetAccountsWithProvider"))
+
+	if err != nil {
+		return err
+	}
+
+	// delete user from authentication providers
+	for _, acc := range query.Accounts {
+		for _, ap := range acc.AccountProviders {
+			err = am.As(AuthProviderType(ap.Name)).getCurrentProvider().DeleteUser(ap.ProviderUserID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	var deleteMutation struct {
+		DeleteAccount struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"delete_account(where: $where)"`
+	}
+
+	return am.gqlClient.Mutate(context.Background(), &deleteMutation, queryVariables, gql.OperationName("DeleteAccountById"))
+}
+
+// GenerateOTP check if the account exists and generate the authentication otp
+func (am *AccountManager) GenerateOTP(sessionVariables map[string]string, phoneCode int, phoneNumber string) OTPOutput {
+
+	if !am.otp.Enabled {
+		return OTPOutput{
+			Error: ErrCodeUnsupported,
+		}
+	}
+
+	if phoneNumber == "" {
+		return OTPOutput{
+			Error: ErrCodePhoneRequired,
+		}
+	}
+	var err error
+	phoneCode, phoneNumber, err = parseI18nPhoneNumber(phoneNumber, phoneCode)
+	if err != nil {
+		return OTPOutput{
+			Error: ErrCodeInvalidPhone,
+		}
+	}
+
+	var query struct {
+		Account []struct {
+			ID         string `graphql:"id"`
+			Disabled   bool   `graphql:"disabled"`
+			Activities []struct {
+				Type      ActivityType `graphql:"type"`
+				CreatedAt time.Time    `graphql:"created_at"`
+			} `graphql:"activities(where: $activityWhere, order_by: { created_at: desc }, limit: $activityLimit)"`
+		} `graphql:"account(where: $where, limit: 1)"`
+	}
+
+	variables := map[string]interface{}{
+		"where": account_bool_exp{
+			"phone_code": map[string]interface{}{
+				"_eq": phoneCode,
+			},
+			"phone_number": map[string]interface{}{
+				"_eq": phoneNumber,
+			},
+			"phone_enabled": map[string]interface{}{
+				"_eq": true,
+			},
+		},
+		"activityWhere": account_activity_bool_exp{
+			"created_at": map[string]interface{}{
+				"_gte": time.Now().Add(-1 * time.Hour),
+			},
+			"type": map[string]interface{}{
+				"_in": []ActivityType{ActivityLogin, ActivityOTP, ActivityOTPFailure, ActivityLogout},
+			},
+		},
+		"activityLimit": graphql.Int(am.otp.LoginDisableLimit),
+	}
+
+	err = am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountWithActivities"))
+	if err != nil {
+		return OTPOutput{
+			Error: err.Error(),
+		}
+	}
+
+	otp := genRandomString(int(am.otp.OTPLength), digits)
+	otpExpiry := time.Now().Add(am.otp.TTL)
+
+	activity := map[string]interface{}{
+		"type": ActivityOTP,
+		"metadata": map[string]interface{}{
+			"otp": otp,
+		},
+	}
+
+	if sessionVariables != nil {
+		if ip := getRequestIPFromSession(sessionVariables); ip != nil {
+			activity["ip"] = *ip
+		}
+		if p, err := getPositionFromSession(sessionVariables); err == nil {
+			activity["position"] = p
+		}
+	}
+
+	if len(query.Account) == 0 {
+		// create the account if it doesn't exist
+		am.InsertAccount(map[string]interface{}{
+			"id":            genID(),
+			"phone_code":    phoneCode,
+			"phone_number":  phoneNumber,
+			"phone_enabled": true,
+			"role":          am.defaultRole,
+			"activities": map[string]interface{}{
+				"data": []map[string]interface{}{activity},
+			},
+		})
+	} else {
+		account := query.Account[0]
+		if account.Disabled {
+			return OTPOutput{
+				Error: ErrCodeAccountDisabled,
+			}
+		}
+
+		var otpTime time.Time
+		var failureLatestTime time.Time
+		failureCount := 0
+
+		for _, act := range account.Activities {
+			if act.Type == ActivityOTP {
+				otpTime = act.CreatedAt
+			} else if act.Type == ActivityLogin || act.Type == ActivityLogout {
+				break
+			} else {
+				if failureLatestTime.IsZero() {
+					failureLatestTime = act.CreatedAt
+				}
+				failureCount++
+			}
+		}
+
+		if failureCount > int(am.otp.LoginDisableLimit) {
+			return OTPOutput{
+				Error: ErrCodeAccountDisabled,
+			}
+		}
+
+		now := time.Now()
+		lockedRemain := failureLatestTime.Add(am.otp.LoginLockDuration).Sub(now)
+		if failureCount >= int(am.otp.LoginLimit) && lockedRemain > 0 {
+			return OTPOutput{
+				Error:          ErrCodeAccountTemporarilyLocked,
+				LockedDuration: uint(lockedRemain.Seconds()),
+			}
+		}
+
+		if otpTime.Add(am.otp.TTL).After(now) {
+			return OTPOutput{
+				Error: ErrCodeOTPAlreadySent,
+			}
+		}
+
+		// otherwise validate the account and insert the activity
+		var createActivityMutation struct {
+			CreateActivity struct {
+				AffectedRows int `graphql:"affected_rows"`
+			} `graphql:"insert_account_activity(objects: $objects)"`
+		}
+
+		activity["account_id"] = account.ID
+		variables := map[string]interface{}{
+			"objects": []account_activity_insert_input{activity},
+		}
+		err = am.gqlClient.Mutate(context.TODO(), &createActivityMutation, variables, graphql.OperationName("CreateAccountActivities"))
+		if err != nil {
+			return OTPOutput{
+				Error: err.Error(),
+			}
+		}
+	}
+	return OTPOutput{
+		Code:   otp,
+		Expiry: otpExpiry,
+	}
+}
+
+// VerifyOTP verify if the otp code matches the current account
+func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input VerifyOTPInput) (*AccessToken, error) {
+
+	if !am.otp.Enabled {
+		return nil, errors.New(ErrCodeUnsupported)
+	}
+
+	if input.PhoneNumber == "" {
+		return nil, errors.New(ErrCodePhoneRequired)
+	}
+
+	var err error
+	phoneCode, phoneNumber, err := parseI18nPhoneNumber(input.PhoneNumber, input.PhoneCode)
+	if err != nil {
+		return nil, errors.New(ErrCodeInvalidPhone)
+	}
+
+	var accountQuery struct {
+		Accounts []struct {
+			ID         string `graphql:"id"`
+			Disabled   bool   `graphql:"disabled"`
+			Activities []struct {
+				Type      ActivityType `graphql:"type"`
+				CreatedAt time.Time    `graphql:"created_at"`
+				Metadata  *struct {
+					OTP string `json:"otp"`
+				} `graphql:"metadata" scalar:"true" json:"metadata"`
+			} `graphql:"activities(where: $activityWhere, order_by: { created_at: desc }, limit: $activityLimit)"`
+			AccountProviders []AccountProvider `json:"account_providers" graphql:"account_providers(where: $providerWhere, limit: 1)"`
+		} `graphql:"account(where: $where, limit: 1)"`
+	}
+
+	variables := map[string]interface{}{
+		"where": account_bool_exp{
+			"phone_code": map[string]interface{}{
+				"_eq": phoneCode,
+			},
+			"phone_number": map[string]interface{}{
+				"_eq": phoneNumber,
+			},
+			"phone_enabled": map[string]interface{}{
+				"_eq": true,
+			},
+		},
+		"activityWhere": account_activity_bool_exp{
+			"created_at": map[string]interface{}{
+				"_gte": time.Now().Add(-time.Hour),
+			},
+			"type": map[string]interface{}{
+				"_in": []ActivityType{ActivityOTP, ActivityLogin, ActivityLogout, ActivityOTPFailure},
+			},
+		},
+		"activityLimit": graphql.Int(am.otp.LoginDisableLimit + 1),
+		"providerWhere": account_provider_bool_exp{
+			"provider_name": map[string]interface{}{
+				"_eq": am.GetProviderName(),
+			},
+		},
+	}
+
+	err = am.gqlClient.Query(context.TODO(), &accountQuery, variables, graphql.OperationName("FindAccountWithActivities"))
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(accountQuery.Accounts) == 0 {
+		return nil, errors.New(ErrCodeAccountNotFound)
+	}
+
+	if accountQuery.Accounts[0].Disabled {
+		return nil, errors.New(ErrCodeAccountDisabled)
+	}
+
+	if len(accountQuery.Accounts[0].Activities) == 0 {
+		return nil, errors.New(ErrCodeInvalidOTP)
+	}
+
+	account := accountQuery.Accounts[0]
+	// static otp code check in dev mode
+	if !am.otp.DevMode || input.OTP != am.otp.DevOTPCode {
+		otpActivityIndex := -1
+		for i, activity := range account.Activities {
+			if activity.Type == ActivityLogin || activity.Type == ActivityLogout {
+				break
+			} else if activity.Type == ActivityOTP {
+				otpActivityIndex = i
+				break
+			}
+		}
+		if otpActivityIndex < 0 || (account.Activities[otpActivityIndex].CreatedAt.Add(am.otp.TTL).Before(time.Now())) ||
+			(account.Activities[otpActivityIndex].Metadata != nil && account.Activities[otpActivityIndex].Metadata.OTP != input.OTP) {
+
+			_ = am.CreateActivity(sessionVariables, account.ID, ActivityOTPFailure, nil)
+			if otpActivityIndex+1 > int(am.otp.LoginDisableLimit) {
+				// disable the user if the failure count exceed limit
+				var updateAccountMutation struct {
+					UpdateAccount struct {
+						AffectedRows int `graphql:"affected_rows"`
+					} `graphql:"update_account(where: { id: { _eq: $id } }, _set: $_set)"`
+				}
+
+				updateVariables := map[string]interface{}{
+					"id": graphql.String(account.ID),
+					"_set": account_set_input{
+						"disabled": true,
+					},
+				}
+
+				_ = am.gqlClient.Mutate(context.TODO(), &updateAccountMutation, updateVariables, graphql.OperationName("UpdateAccount"))
+			}
+			return nil, errors.New(ErrCodeInvalidOTP)
+		}
+	}
+
+	// insert account provider if not exist
+	if len(account.AccountProviders) == 0 {
+		acc, err := am.getCurrentProvider().GetOrCreateUserByPhone(&CreateAccountInput{
+			ID:          account.ID,
+			PhoneCode:   int(input.PhoneCode),
+			PhoneNumber: input.PhoneNumber,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		accProvider := AccountProvider{
+			Name:           acc.AccountProviders[0].Name,
+			ProviderUserID: acc.AccountProviders[0].ProviderUserID,
+			AccountID:      &account.ID,
+			Metadata:       acc.AccountProviders[0].Metadata,
+		}
+		err = am.CreateProvider(accProvider)
+		if err != nil {
+			return nil, err
+		}
+
+		account.AccountProviders = []AccountProvider{accProvider}
+	}
+
+	var updateAccountMutation struct {
+		UpdateAccount struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"update_account(where: { id: { _eq: $id } }, _set: $_set)"`
+		CreateActivity struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"insert_account_activity(objects: $activities)"`
+	}
+
+	activity := map[string]interface{}{
+		"account_id": account.ID,
+		"type":       ActivityLogin,
+	}
+
+	if sessionVariables != nil {
+		if ip := getRequestIPFromSession(sessionVariables); ip != nil {
+			activity["ip"] = *ip
+		}
+		if p, err := getPositionFromSession(sessionVariables); err == nil {
+			activity["position"] = p
+		}
+	}
+
+	updateVariables := map[string]interface{}{
+		"id": graphql.String(account.ID),
+		"_set": account_set_input{
+			"verified": true,
+		},
+		"activities": []account_activity_insert_input{activity},
+	}
+
+	err = am.gqlClient.Mutate(context.TODO(), &updateAccountMutation, updateVariables, graphql.OperationName("UpdateAccount"))
+	if err != nil {
+		return nil, err
+	}
+
+	return am.EncodeToken(&account.AccountProviders[0])
+}
+
+// CreateActivity create an user activity record
+func (am *AccountManager) CreateActivity(sessionVariables map[string]string, accountID string, activityType ActivityType, metadata map[string]interface{}) error {
+
+	var createActivityMutation struct {
+		CreateActivity struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"insert_account_activity(objects: $objects)"`
+	}
+
+	activity := map[string]interface{}{
+		"account_id": accountID,
+		"type":       activityType,
+	}
+
+	if metadata != nil {
+		activity["metadata"] = metadata
+	}
+	if sessionVariables != nil {
+		if ip := getRequestIPFromSession(sessionVariables); ip != nil {
+			activity["ip"] = *ip
+		}
+		if p, err := getPositionFromSession(sessionVariables); err == nil {
+			activity["position"] = p
+		}
+	}
+
+	variables := map[string]interface{}{
+		"objects": []account_activity_insert_input{activity},
+	}
+
+	return am.gqlClient.Mutate(context.TODO(), &createActivityMutation, variables, graphql.OperationName("CreateAccountActivities"))
 }
