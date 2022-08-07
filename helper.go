@@ -114,20 +114,23 @@ func getPositionFromSession(sessionVariables map[string]string) (*GeoPoint, erro
 		Type:        "Point",
 		Coordinates: []float64{0, 0},
 	}
-	if l, ok := sessionVariables[XHasuraLongitude]; ok && l != "" {
+	if l, ok := sessionVariables[XHasuraLongitude]; ok && l != "" && l != "0" {
 		fl, err := strconv.ParseFloat(l, 64)
 		if err == nil {
 			return nil, err
 		}
 		result.Coordinates[0] = fl
+	} else {
+		return nil, nil
 	}
-	if l, ok := sessionVariables[XHasuraLatitude]; ok && l != "" {
+	if l, ok := sessionVariables[XHasuraLatitude]; ok && l != "" && l != "0" {
 		fl, err := strconv.ParseFloat(l, 64)
 		if err == nil {
 			return nil, err
 		}
 		result.Coordinates[1] = fl
+	} else {
+		return nil, nil
 	}
-
 	return result, nil
 }

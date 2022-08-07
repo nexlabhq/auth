@@ -761,7 +761,7 @@ func (am *AccountManager) GenerateOTP(sessionVariables map[string]string, phoneC
 		if ip := getRequestIPFromSession(sessionVariables); ip != nil {
 			activity["ip"] = *ip
 		}
-		if p, err := getPositionFromSession(sessionVariables); err == nil {
+		if p, err := getPositionFromSession(sessionVariables); err == nil && p != nil {
 			activity["position"] = p
 		}
 	}
@@ -1006,7 +1006,7 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 		if ip := getRequestIPFromSession(sessionVariables); ip != nil {
 			activity["ip"] = *ip
 		}
-		if p, err := getPositionFromSession(sessionVariables); err == nil {
+		if p, err := getPositionFromSession(sessionVariables); err == nil && p != nil {
 			activity["position"] = p
 		}
 	}
@@ -1048,7 +1048,7 @@ func (am *AccountManager) CreateActivity(sessionVariables map[string]string, acc
 		if ip := getRequestIPFromSession(sessionVariables); ip != nil {
 			activity["ip"] = *ip
 		}
-		if p, err := getPositionFromSession(sessionVariables); err == nil {
+		if p, err := getPositionFromSession(sessionVariables); err == nil && p != nil {
 			activity["position"] = p
 		}
 	}
