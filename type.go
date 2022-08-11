@@ -4,6 +4,7 @@ import "time"
 
 type AuthProviderType string
 type ActivityType string
+type Auth2FAType string
 
 const (
 	AuthorizationHeader                  = "authorization"
@@ -11,11 +12,15 @@ const (
 	AuthJWT             AuthProviderType = "jwt"
 	AuthFirebase        AuthProviderType = "firebase"
 
-	ActivityLogin        ActivityType = "L"
-	ActivityLoginFailure ActivityType = "LF"
-	ActivityLogout       ActivityType = "LO"
-	ActivityOTP          ActivityType = "O"
-	ActivityOTPFailure   ActivityType = "OF"
+	ActivityLogin         ActivityType = "L"
+	ActivityLoginFailure  ActivityType = "LF"
+	ActivityLogout        ActivityType = "LO"
+	ActivityOTP           ActivityType = "O"
+	ActivityOTPFailure    ActivityType = "OF"
+	ActivityOTP2FA        ActivityType = "O2"
+	ActivityOTP2FASuccess ActivityType = "O2S"
+
+	Auth2FASms Auth2FAType = "sms"
 
 	HasuraClaims        = "https://hasura.io/jwt/claims"
 	XHasuraDefaultRole  = "x-hasura-default-role"
@@ -39,6 +44,7 @@ const (
 	ErrCodeNewPasswordEqualCurrentPassword  = "new_pw_equal_current_pw"
 	ErrCodeEmailRequired                    = "required_email"
 	ErrCodePhoneRequired                    = "required_phone"
+	ErrCodePhoneNotRegistered               = "phone_not_registered"
 	ErrCodeInvalidPhone                     = "invalid_phone"
 	ErrCodePasswordNotMatch                 = "password_not_match"
 	ErrCodeCurrentPasswordNotMatch          = "current_password_not_match"
@@ -95,6 +101,17 @@ type CreateAccountInput struct {
 	PhoneEnabled     bool             `json:"phone_enabled"`
 }
 
+type UpdateAccountInput struct {
+	DisplayName  string `json:"display_name"`
+	Email        string `json:"email"`
+	PhoneCode    int    `json:"phone_code"`
+	PhoneNumber  string `json:"phone_number"`
+	Password     string `json:"password,omitempty"`
+	Verified     bool   `json:"verified"`
+	EmailEnabled bool   `json:"email_enabled"`
+	PhoneEnabled bool   `json:"phone_enabled"`
+}
+
 type account_insert_input map[string]interface{}
 type account_set_input map[string]interface{}
 type account_bool_exp map[string]interface{}
@@ -140,6 +157,7 @@ type AuthProvider interface {
 	GetName() AuthProviderType
 	CreateUser(*CreateAccountInput) (*Account, error)
 	GetOrCreateUserByPhone(*CreateAccountInput) (*Account, error)
+	UpdateUser(string, UpdateAccountInput) (*Account, error)
 	DeleteUser(id string) error
 	GetUserByID(id string) (*Account, error)
 	GetUserByEmail(email string) (*Account, error)
@@ -175,10 +193,11 @@ func (tco tokenClaimsOption) Value() interface{} {
 }
 
 type OTPOutput struct {
-	Error          string    `json:"error"`
-	LockedDuration uint      `json:"locked_duration,omitempty"`
-	Code           string    `json:"otp"`
-	Expiry         time.Time `json:"otp_expiry"`
+	Error          string
+	LockedDuration uint
+	Code           string
+	Expiry         time.Time
+	AccountID      string
 }
 
 type VerifyOTPInput struct {

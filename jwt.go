@@ -554,3 +554,22 @@ func (ja *JWTAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, 
 		},
 	}, nil
 }
+
+func (ja *JWTAuth) UpdateUser(uid string, input UpdateAccountInput) (*Account, error) {
+	return &Account{
+		BaseAccount: BaseAccount{
+			ID:          uid,
+			Email:       input.Email,
+			DisplayName: input.DisplayName,
+			PhoneCode:   input.PhoneCode,
+			PhoneNumber: input.PhoneNumber,
+			Verified:    input.Verified,
+		},
+		AccountProviders: []AccountProvider{
+			{
+				Name:           string(AuthJWT),
+				ProviderUserID: uid,
+			},
+		},
+	}, nil
+}

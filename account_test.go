@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"testing"
@@ -288,6 +289,7 @@ func TestJWTAuthOTP(t *testing.T) {
 		DefaultRole:     "user",
 		DefaultProvider: "jwt",
 		CreateFromToken: true,
+		Enabled2FA:      true,
 		OTP: AuthOTPConfig{
 			Enabled:           true,
 			DevMode:           true,
@@ -327,6 +329,16 @@ func TestJWTAuthOTP(t *testing.T) {
 	})
 	assert.EqualError(t, err, ErrCodeInvalidOTP)
 
+	// test 2fa otp
+	log.Println(otp.AccountID)
+	otp2fa := manager.Generate2FaOTP(nil, otp.AccountID, 0, "")
+	assert.Equal(t, "", otp2fa.Error)
+	assert.Equal(t, 6, len(otp2fa.Code))
+
+	err = manager.Verify2FaOTP(nil, otp.AccountID, otp2fa.Code, Auth2FASms)
+	assert.NoError(t, err)
+
+	// test failure otp
 	opt4 := manager.GenerateOTP(nil, 84, phoneNumber)
 	assert.Equal(t, "", opt4.Error)
 	assert.Equal(t, 6, len(opt4.Code))

@@ -282,3 +282,81 @@ func (fa *FirebaseAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Acco
 		},
 	}, nil
 }
+
+func (fa *FirebaseAuth) UpdateUser(uid string, input UpdateAccountInput) (*Account, error) {
+	ctx := context.Background()
+	authClient, err := fa.App.Auth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	u, err := authClient.GetUser(context.Background(), uid)
+	if err != nil {
+		if !auth.IsUserNotFound(err) {
+			return nil, err
+		}
+		return fa.CreateUser(&CreateAccountInput{
+			ID:               uid,
+			DisplayName:      input.DisplayName,
+			Email:            input.Email,
+			EmailEnabled:     input.EmailEnabled,
+			PhoneCode:        input.PhoneCode,
+			PhoneNumber:      input.PhoneNumber,
+			PhoneEnabled:     input.PhoneEnabled,
+			AuthProviderType: fa.GetName(),
+			Password:         input.Password,
+			Verified:         input.Verified,
+		})
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	shouldUpdate := false
+	data := &auth.UserToUpdate{}
+	if input.Password != "" {
+		data = data.Password(input.Password)
+		shouldUpdate = true
+	}
+
+	if input.PhoneNumber != "" {
+		i18nPhone := formatI18nPhoneNumber(input.PhoneCode, input.PhoneNumber)
+		if i18nPhone != u.PhoneNumber {
+			data = data.PhoneNumber(i18nPhone)
+			shouldUpdate = true
+		}
+	}
+	if input.Email != "" && input.Email != u.Email {
+		data = data.Email(input.Email).EmailVerified(input.EmailEnabled)
+		shouldUpdate = true
+	}
+
+	acc := &Account{
+		BaseAccount: BaseAccount{
+			ID:          uid,
+			Email:       input.Email,
+			DisplayName: input.DisplayName,
+			PhoneCode:   input.PhoneCode,
+			PhoneNumber: input.PhoneNumber,
+			Verified:    input.Verified,
+		},
+		AccountProviders: []AccountProvider{
+			{
+				Name:           string(AuthFirebase),
+				ProviderUserID: u.UID,
+			},
+		},
+	}
+
+	if !shouldUpdate {
+		return acc, nil
+	}
+
+	_, err = authClient.UpdateUser(ctx, uid, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return acc, nil
+}
