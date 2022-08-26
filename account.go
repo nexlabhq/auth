@@ -1162,8 +1162,10 @@ func (am *AccountManager) Generate2FaOTP(sessionVariables map[string]string, acc
 	if phoneNumber != "" && phoneNumber != query.Account[0].PhoneNumber {
 		shouldUpdatePhone = true
 		pCode, pNumber, err = parseI18nPhoneNumber(phoneNumber, phoneCode)
-		return OTPOutput{
-			Error: ErrCodeInvalidPhone,
+		if err != nil {
+			return OTPOutput{
+				Error: ErrCodeInvalidPhone,
+			}
 		}
 	}
 	activity, otp, otpExpiry := am.newOTPActivity(sessionVariables, accountID, ActivityOTP2FA)
