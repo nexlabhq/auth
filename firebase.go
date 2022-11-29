@@ -307,10 +307,6 @@ func (fa *FirebaseAuth) UpdateUser(uid string, input UpdateAccountInput) (*Accou
 			Password:         input.Password,
 			Verified:         input.Verified,
 		})
-
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	shouldUpdate := false
