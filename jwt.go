@@ -406,6 +406,9 @@ func (ja *JWTAuth) SignInWithEmailAndPassword(email string, password string) (*A
 		"email": map[string]string{
 			"_eq": email,
 		},
+		"email_enabled": map[string]bool{
+			"_eq": true,
+		},
 	}, password)
 }
 
@@ -416,6 +419,9 @@ func (ja *JWTAuth) SignInWithPhoneAndPassword(phoneCode int, phoneNumber string,
 		},
 		"phone_number": map[string]string{
 			"_eq": phoneNumber,
+		},
+		"phone_enabled": map[string]bool{
+			"_eq": true,
 		},
 	}, password)
 }
