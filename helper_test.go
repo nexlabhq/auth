@@ -8,7 +8,7 @@ import (
 
 func TestParsePhoneNumber(t *testing.T) {
 	rawPhoneNumber := "+84900000000"
-	code, num, err := parseI18nPhoneNumber(rawPhoneNumber, "")
+	code, num, err := parseI18nPhoneNumber(rawPhoneNumber, 84)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 84, code)

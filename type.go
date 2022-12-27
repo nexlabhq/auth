@@ -1,43 +1,70 @@
 package auth
 
+import "time"
+
 type AuthProviderType string
+type ActivityType string
+type Auth2FAType string
 
 const (
 	AuthorizationHeader                  = "authorization"
 	AuthBearer          AuthProviderType = "Bearer"
 	AuthJWT             AuthProviderType = "jwt"
 	AuthFirebase        AuthProviderType = "firebase"
-	HasuraClaims                         = "https://hasura.io/jwt/claims"
-	XHasuraDefaultRole                   = "x-hasura-default-role"
-	XHasuraAllowedRoles                  = "x-hasura-allowed-roles"
-	XHasuraUserID                        = "x-hasura-user-id"
+
+	ActivityLogin         ActivityType = "L"
+	ActivityLoginFailure  ActivityType = "LF"
+	ActivityLogout        ActivityType = "LO"
+	ActivityOTP           ActivityType = "O"
+	ActivityOTPFailure    ActivityType = "OF"
+	ActivityOTP2FA        ActivityType = "O2"
+	ActivityOTP2FASuccess ActivityType = "O2S"
+
+	Auth2FASms Auth2FAType = "sms"
+
+	HasuraClaims        = "https://hasura.io/jwt/claims"
+	XHasuraDefaultRole  = "x-hasura-default-role"
+	XHasuraAllowedRoles = "x-hasura-allowed-roles"
+	XHasuraUserID       = "x-hasura-user-id"
+	XHasuraRequestIP    = "x-hasura-request-ip"
+	XHasuraLatitude     = "x-hasura-latitude"
+	XHasuraLongitude    = "x-hasura-longitude"
 )
 
 const (
 	ErrCodeUnsupported                      = "unsupported"
 	ErrCodeTokenExpired                     = "token_expired"
-	ErrCodeJWTInvalidIssuer                 = "jwt:invalid_issuer"
+	ErrCodeJWTInvalidIssuer                 = "jwt_invalid_issuer"
 	ErrCodeTokenMismatched                  = "token_mismatched"
 	ErrCodeTokenAudienceMismatched          = "token_audience_mismatched"
 	ErrCodeRefreshTokenAudienceMismatched   = "refresh_token_audience_mismatched"
-	ErrCodePasswordRequired                 = "required:password"
-	ErrCodeCurrentPasswordRequired          = "required:current_password"
-	ErrCodeNewPasswordRequired              = "required:new_password"
+	ErrCodePasswordRequired                 = "required_password"
+	ErrCodeCurrentPasswordRequired          = "required_current_password"
+	ErrCodeNewPasswordRequired              = "required_new_password"
 	ErrCodeNewPasswordEqualCurrentPassword  = "new_pw_equal_current_pw"
-	ErrCodeEmailRequired                    = "required:email"
-	ErrCodePhoneRequired                    = "required:phone"
+	ErrCodeEmailRequired                    = "required_email"
+	ErrCodePhoneRequired                    = "required_phone"
+	ErrCodePhoneNotRegistered               = "phone_not_registered"
+	ErrCodeInvalidPhone                     = "invalid_phone"
 	ErrCodePasswordNotMatch                 = "password_not_match"
 	ErrCodeCurrentPasswordNotMatch          = "current_password_not_match"
-	ErrCodeAccountNotFound                  = "account:not_found"
-	ErrCodeAccountExisted                   = "account:existed"
-	ErrCodeAccountNoProvider                = "account:no_provider"
-	ErrCodeAPIKeyInvalidIP                  = "api_key:invalid_ip"
-	ErrCodeAPIKeyInvalidFQDN                = "api_key:invalid_fqdn"
-	ErrCodeAPIKeyExpired                    = "api_key:expired"
-	ErrCodeAPIKeyRequired                   = "api_key:required"
-	ErrCodeAPIKeyNotFound                   = "api_key:not_found"
+	ErrCodeAccountNotFound                  = "account_not_found"
+	ErrCodeAccountTemporarilyLocked         = "account_temporarily_locked"
+	ErrCodeAccountDisabled                  = "account_disabled"
+	ErrCodeAccountExisted                   = "account_existed"
+	ErrCodeAccountNoProvider                = "account_no_provider"
+	ErrCodeAccountInsertZero                = "account_insert_zero"
+	ErrCodeAccountProviderInsertZero        = "account_provider_insert_zero"
+	ErrCodeAPIKeyInvalidIP                  = "api_key_invalid_ip"
+	ErrCodeAPIKeyInvalidFQDN                = "api_key_invalid_fqdn"
+	ErrCodeAPIKeyExpired                    = "api_key_expired"
+	ErrCodeAPIKeyRequired                   = "api_key_required"
+	ErrCodeAPIKeyNotFound                   = "api_key_not_found"
 	ErrCodeUpdateProviderNonExistentAccount = "update_provider_nonexistent_account"
 	ErrCodeUpdatePasswordNonExistentAccount = "update_password_nonexistent_account"
+	ErrCodeOTPAlreadySent                   = "otp_already_sent"
+	ErrCodeInvalidOTP                       = "invalid_otp"
+	ErrCodeInvalidAuthProvider              = "invalid_auth_provider"
 )
 
 func GetAuthProviderTypes() []AuthProviderType {
@@ -74,10 +101,23 @@ type CreateAccountInput struct {
 	PhoneEnabled     bool             `json:"phone_enabled"`
 }
 
+type UpdateAccountInput struct {
+	DisplayName  string `json:"display_name"`
+	Email        string `json:"email"`
+	PhoneCode    int    `json:"phone_code"`
+	PhoneNumber  string `json:"phone_number"`
+	Password     string `json:"password,omitempty"`
+	Verified     bool   `json:"verified"`
+	EmailEnabled bool   `json:"email_enabled"`
+	PhoneEnabled bool   `json:"phone_enabled"`
+}
+
 type account_insert_input map[string]interface{}
 type account_set_input map[string]interface{}
 type account_bool_exp map[string]interface{}
 type account_provider_bool_exp map[string]interface{}
+type account_activity_bool_exp map[string]interface{}
+type account_activity_insert_input map[string]interface{}
 
 type AccountProvider struct {
 	AccountID      *string                `json:"account_id,omitempty" graphql:"account_id"`
@@ -116,6 +156,8 @@ type AccessToken struct {
 type AuthProvider interface {
 	GetName() AuthProviderType
 	CreateUser(*CreateAccountInput) (*Account, error)
+	GetOrCreateUserByPhone(*CreateAccountInput) (*Account, error)
+	UpdateUser(string, UpdateAccountInput) (*Account, error)
 	DeleteUser(id string) error
 	GetUserByID(id string) (*Account, error)
 	GetUserByEmail(email string) (*Account, error)
@@ -148,4 +190,18 @@ func (tco tokenClaimsOption) Type() string {
 
 func (tco tokenClaimsOption) Value() interface{} {
 	return tco.value
+}
+
+type OTPOutput struct {
+	Error          string
+	LockedDuration uint
+	Code           string
+	Expiry         time.Time
+	AccountID      string
+}
+
+type VerifyOTPInput struct {
+	PhoneCode   int    `json:"phone_code"`
+	PhoneNumber string `json:"phone_number"`
+	OTP         string `json:"otp"`
 }

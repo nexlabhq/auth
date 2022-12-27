@@ -26,14 +26,17 @@ type jwtPayload struct {
 }
 
 type JWTAuthConfig struct {
-	Cost           int           `envconfig:"JWT_HASH_COST" default:"10"`
-	SessionKey     string        `envconfig:"SESSION_KEY"`
-	TTL            time.Duration `envconfig:"SESSION_TTL" default:"1h"`
-	RefreshTTL     time.Duration `envconfig:"SESSION_REFRESH_TTL" default:"0ms"`
-	Issuer         string        `envconfig:"JWT_ISSUER"`
-	Algorithm      string        `envconfig:"JWT_ALGORITHM" default:"HS256"`
-	HasChecksum    bool          `envconfig:"JWT_CHECKSUM" default:"false"`
-	ChecksumLength int           `envconfig:"JWT_CHECKSUM_LENGTH" default:"8"`
+	Cost              int           `envconfig:"JWT_HASH_COST" default:"10"`
+	SessionKey        string        `envconfig:"SESSION_KEY"`
+	TTL               time.Duration `envconfig:"SESSION_TTL" default:"1h"`
+	RefreshTTL        time.Duration `envconfig:"SESSION_REFRESH_TTL" default:"0ms"`
+	Issuer            string        `envconfig:"JWT_ISSUER"`
+	Algorithm         string        `envconfig:"JWT_ALGORITHM" default:"HS256"`
+	HasChecksum       bool          `envconfig:"JWT_CHECKSUM" default:"false"`
+	ChecksumLength    int           `envconfig:"JWT_CHECKSUM_LENGTH" default:"8"`
+	LoginLimit        uint          `envconfig:"JWT_LOGIN_LIMIT" default:"5"`
+	LoginLockLimit    uint          `envconfig:"JWT_DISABLE_LIMIT" default:"15"`
+	LoginLockDuration time.Duration `envconfig:"JWT_LOCK_DURATION" default:"10m"`
 }
 
 func (jac JWTAuthConfig) Validate() error {
@@ -532,4 +535,47 @@ func (ja *JWTAuth) decodeToken(token string) (*jwtPayload, error) {
 
 func (ja *JWTAuth) genRefreshTokenID(id string) string {
 	return fmt.Sprintf("%s-refresh", id)
+}
+
+func (ja *JWTAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, error) {
+	metadata := map[string]interface{}{
+		"checksum": genRandomString(ja.config.ChecksumLength),
+	}
+	return &Account{
+		BaseAccount: BaseAccount{
+			ID:          input.ID,
+			Email:       input.Email,
+			DisplayName: input.DisplayName,
+			PhoneCode:   input.PhoneCode,
+			PhoneNumber: input.PhoneNumber,
+			Role:        input.Role,
+			Verified:    input.Verified,
+		},
+		AccountProviders: []AccountProvider{
+			{
+				Name:           string(AuthJWT),
+				ProviderUserID: input.ID,
+				Metadata:       metadata,
+			},
+		},
+	}, nil
+}
+
+func (ja *JWTAuth) UpdateUser(uid string, input UpdateAccountInput) (*Account, error) {
+	return &Account{
+		BaseAccount: BaseAccount{
+			ID:          uid,
+			Email:       input.Email,
+			DisplayName: input.DisplayName,
+			PhoneCode:   input.PhoneCode,
+			PhoneNumber: input.PhoneNumber,
+			Verified:    input.Verified,
+		},
+		AccountProviders: []AccountProvider{
+			{
+				Name:           string(AuthJWT),
+				ProviderUserID: uid,
+			},
+		},
+	}, nil
 }
