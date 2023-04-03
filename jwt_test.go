@@ -22,7 +22,7 @@ func TestJWTEncode(t *testing.T) {
 	uid := uuid.New().String()
 	tokenResult, err := jwtAuth.EncodeToken(&AccountProvider{
 		ProviderUserID: uid,
-	}, nil)
+	}, []AuthScope{ScopeOpenID, ScopeOfflineAccess})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tokenResult.RefreshToken)
 

@@ -4,20 +4,14 @@
 package auth
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"testing"
 	"time"
 
-	firebase "firebase.google.com/go/v4"
 	"github.com/hasura/go-graphql-client"
 	"github.com/stretchr/testify/assert"
-	"google.golang.org/api/option"
 )
 
 // hasuraTransport transport for Hasura GraphQL Client
@@ -145,7 +139,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 		assert.Equal(t, testClaims, claims)
 	}
 
-	token1, err := manager.EncodeToken(&user.AccountProviders[0], NewTokenClaims(testClaims))
+	token1, err := manager.EncodeToken(&user.AccountProviders[0], []AuthScope{ScopeOpenID, ScopeOfflineAccess}, NewTokenClaims(testClaims))
 	assert.NoError(t, err)
 
 	doVerify(token1.AccessToken)
@@ -156,7 +150,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	_, _, err = manager.VerifyToken(token1.AccessToken)
 	assert.EqualError(t, err, ErrCodeTokenExpired)
 
-	newToken1, err := manager.RefreshToken(token1.RefreshToken, token1.AccessToken, NewTokenClaims(testClaims))
+	newToken1, err := manager.RefreshToken(token1.RefreshToken, NewTokenClaims(testClaims))
 	assert.Nil(t, err)
 	doVerify(newToken1.AccessToken)
 
@@ -171,7 +165,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, user.ID, userAfterChanged.ID)
 
-	tokenAfterChanged, err := manager.EncodeToken(&userAfterChanged.AccountProviders[0], NewTokenClaims(testClaims))
+	tokenAfterChanged, err := manager.EncodeToken(&userAfterChanged.AccountProviders[0], []AuthScope{ScopeOpenID, ScopeOfflineAccess}, NewTokenClaims(testClaims))
 	assert.Nil(t, err)
 	doVerify(tokenAfterChanged.AccessToken)
 

@@ -160,7 +160,7 @@ func (ja *JWTAuth) SetCustomClaims(uid string, input map[string]interface{}) err
 	return errors.New(ErrCodeUnsupported)
 }
 
-func (ja *JWTAuth) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
+func (ja *JWTAuth) EncodeToken(cred *AccountProvider, scopes []AuthScope, options ...AccessTokenOption) (*AccessToken, error) {
 
 	now := time.Now()
 	exp := now.Add(ja.config.TTL)
@@ -216,7 +216,7 @@ func (ja *JWTAuth) EncodeToken(cred *AccountProvider, options ...AccessTokenOpti
 
 	// encode refresh token if the expiry is set
 	var refreshToken string
-	if ja.config.RefreshTTL >= ja.config.TTL {
+	if sliceContains(scopes, ScopeOfflineAccess) && ja.config.RefreshTTL >= ja.config.TTL {
 		refreshPayload := jwtPayload{
 			JwtID:          ja.genRefreshTokenID(jwtID),
 			Issuer:         ja.config.Issuer,
@@ -497,7 +497,7 @@ func (ja *JWTAuth) RefreshToken(refreshToken string, options ...AccessTokenOptio
 		return nil, err
 	}
 
-	return ja.EncodeToken(provider, options...)
+	return ja.EncodeToken(provider, []AuthScope{ScopeOpenID, ScopeOfflineAccess}, options...)
 }
 
 func (ja *JWTAuth) decodeToken(token string) (*jwtPayload, error) {

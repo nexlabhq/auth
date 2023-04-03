@@ -201,7 +201,7 @@ func (fa *FirebaseAuth) DeleteUser(uid string) error {
 }
 
 // EncodeToken encodes the custom ID Token from Firebase Auth
-func (fa *FirebaseAuth) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
+func (fa *FirebaseAuth) EncodeToken(cred *AccountProvider, scopes []AuthScope, options ...AccessTokenOption) (*AccessToken, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
 	if err != nil {

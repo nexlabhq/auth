@@ -521,8 +521,8 @@ func (am *AccountManager) SignInWithPhoneAndPassword(phoneCode int, phoneNumber 
 	return am.getCurrentProvider().SignInWithPhoneAndPassword(phoneCode, phoneNumber, password)
 }
 
-func (am *AccountManager) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
-	return am.getCurrentProvider().EncodeToken(cred, options...)
+func (am *AccountManager) EncodeToken(cred *AccountProvider, scopes []AuthScope, options ...AccessTokenOption) (*AccessToken, error) {
+	return am.getCurrentProvider().EncodeToken(cred, scopes, options...)
 }
 
 func (am *AccountManager) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
@@ -1036,7 +1036,7 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 		return nil, err
 	}
 
-	return am.EncodeToken(&account.AccountProviders[0])
+	return am.EncodeToken(&account.AccountProviders[0], input.Scopes)
 }
 
 // newActivity create an user activity model

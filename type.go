@@ -6,6 +6,21 @@ type AuthProviderType string
 type ActivityType string
 type Auth2FAType string
 
+// AuthScope represents the OAuth Scopes specification
+// https://oauth.net/2/scope/
+type AuthScope string
+
+const (
+	// openid scope is used to get an ID Token
+	ScopeOpenID AuthScope = "openid"
+	// offline_access is used to get a Refresh Token.
+	ScopeOfflineAccess AuthScope = "offline_access"
+	// email scope is used to add the email info into the ID token
+	ScopeEmail AuthScope = "email"
+	// profile scope is used to add the profile info into the ID token
+	ScopeProfile AuthScope = "profile"
+)
+
 const (
 	AuthorizationHeader                  = "authorization"
 	AuthBearer          AuthProviderType = "Bearer"
@@ -162,7 +177,7 @@ type AuthProvider interface {
 	GetUserByID(id string) (*Account, error)
 	GetUserByEmail(email string) (*Account, error)
 	SetCustomClaims(uid string, input map[string]interface{}) error
-	EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error)
+	EncodeToken(cred *AccountProvider, scopes []AuthScope, options ...AccessTokenOption) (*AccessToken, error)
 	RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error)
 	VerifyToken(token string) (*AccountProvider, map[string]interface{}, error)
 	VerifyPassword(uid string, password string) error
@@ -171,6 +186,7 @@ type AuthProvider interface {
 	SignInWithPhoneAndPassword(phoneCode int, phoneNumber string, password string) (*Account, error)
 }
 
+// AccessTokenOption the extensible interface for token encoding
 type AccessTokenOption interface {
 	Type() string
 	Value() interface{}
@@ -180,18 +196,22 @@ type tokenClaimsOption struct {
 	value map[string]interface{}
 }
 
+// NewTokenClaims create the access token option for custom claims
 func NewTokenClaims(claims map[string]interface{}) AccessTokenOption {
 	return &tokenClaimsOption{value: claims}
 }
 
+// Type create the access token option for custom claims
 func (tco tokenClaimsOption) Type() string {
 	return "claims"
 }
 
+// Value returns value of the custom claims
 func (tco tokenClaimsOption) Value() interface{} {
 	return tco.value
 }
 
+// OTPOutput represents the otp response
 type OTPOutput struct {
 	Error          string
 	LockedDuration uint
@@ -200,8 +220,10 @@ type OTPOutput struct {
 	AccountID      string
 }
 
+// VerifyOTPInput represents the otp verification input
 type VerifyOTPInput struct {
-	PhoneCode   int    `json:"phone_code"`
-	PhoneNumber string `json:"phone_number"`
-	OTP         string `json:"otp"`
+	PhoneCode   int         `json:"phone_code"`
+	PhoneNumber string      `json:"phone_number"`
+	OTP         string      `json:"otp"`
+	Scopes      []AuthScope `json:"scopes"`
 }
