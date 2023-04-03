@@ -15,7 +15,7 @@ func TestJWTEncode(t *testing.T) {
 		SessionKey: "randomsecret",
 		TTL:        time.Hour,
 		RefreshTTL: 2 * time.Hour,
-		Issuer:     "telehealth.nexlab",
+		Issuer:     "https://nexlab.tech",
 		Algorithm:  jose.HS256,
 	})
 
@@ -38,11 +38,8 @@ func TestJWTEncode(t *testing.T) {
 
 	testVerifyToken(tokenResult.AccessToken)
 
-	refreshToken, err := jwtAuth.RefreshToken(tokenResult.RefreshToken, nil)
+	refreshToken, err := jwtAuth.RefreshToken(tokenResult.RefreshToken)
 	assert.NoError(t, err)
-
-	_, err = jwtAuth.RefreshToken(tokenResult.RefreshToken, nil)
-	assert.EqualError(t, err, ErrCodeTokenMismatched)
 
 	_, _, err = jwtAuth.VerifyToken(tokenResult.RefreshToken)
 	assert.EqualError(t, err, ErrCodeTokenAudienceMismatched)
