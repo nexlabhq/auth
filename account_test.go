@@ -45,41 +45,6 @@ func setupHasuraClient() *graphql.Client {
 	return graphql.NewClient(os.Getenv("DATA_URL"), httpClient)
 }
 
-func setupFirebaseApp() *firebase.App {
-	app, err := firebase.NewApp(context.Background(), nil, option.WithCredentialsJSON([]byte(os.Getenv("GOOGLE_CREDENTIALS"))))
-
-	if err != nil {
-		panic(err)
-	}
-
-	return app
-}
-
-func getFirebaseIdToken(token string) (string, error) {
-	client := http.DefaultClient
-	url := fmt.Sprintf("https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyCustomToken?key=%s", os.Getenv("FIREBASE_API_KEY"))
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer([]byte(fmt.Sprintf(`{
-		"token": "%s",
-		"returnSecureToken": true
-	}`, token))))
-
-	if err != nil {
-		return "", err
-	}
-
-	var result struct {
-		IDToken string `json:"idToken"`
-	}
-
-	err = json.NewDecoder(resp.Body).Decode(&result)
-
-	if err != nil {
-		return "", err
-	}
-
-	return result.IDToken, nil
-}
-
 func deleteUserByEmail(am *AccountManager, email string) error {
 	user, err := am.FindAccountByEmail(email)
 	if err != nil {

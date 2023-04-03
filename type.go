@@ -163,7 +163,7 @@ type AuthProvider interface {
 	GetUserByEmail(email string) (*Account, error)
 	SetCustomClaims(uid string, input map[string]interface{}) error
 	EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error)
-	RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error)
+	RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error)
 	VerifyToken(token string) (*AccountProvider, map[string]interface{}, error)
 	VerifyPassword(uid string, password string) error
 	ChangePassword(uid string, newPassword string) error

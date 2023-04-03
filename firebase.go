@@ -8,14 +8,18 @@ import (
 	"firebase.google.com/go/v4/auth"
 )
 
+// FirebaseAuth implements the AuthProvider interface for Firebase authentication
 type FirebaseAuth struct {
 	*firebase.App
+	roleAnonymous string
 }
 
+// NewFirebaseAuth creates a FirebaseAuth instance
 func NewFirebaseAuth(app *firebase.App) *FirebaseAuth {
-	return &FirebaseAuth{app}
+	return &FirebaseAuth{App: app, roleAnonymous: "anonymous"}
 }
 
+// GetName gets the authentication provider type enum
 func (fa FirebaseAuth) GetName() AuthProviderType {
 	return AuthFirebase
 }
@@ -101,23 +105,32 @@ func (fa *FirebaseAuth) applyUser(u *auth.UserRecord, err error) (*Account, erro
 		return nil, nil
 	}
 
-	phoneCode := 0
-	phoneNumber := ""
-	if u.PhoneNumber != "" {
-		phoneCode, phoneNumber, err = parseI18nPhoneNumber(u.PhoneNumber, 0)
-		if err != nil {
-			return nil, err
+	var baseAccount BaseAccount
+	// anonymous user
+	if len(u.ProviderUserInfo) == 0 {
+		baseAccount = BaseAccount{
+			Role: fa.roleAnonymous,
 		}
-	}
-
-	return &Account{
-		BaseAccount: BaseAccount{
+	} else {
+		phoneCode := 0
+		phoneNumber := ""
+		if u.PhoneNumber != "" {
+			phoneCode, phoneNumber, err = parseI18nPhoneNumber(u.PhoneNumber, 0)
+			if err != nil {
+				return nil, err
+			}
+		}
+		baseAccount = BaseAccount{
 			Email:       u.Email,
 			DisplayName: u.DisplayName,
 			PhoneCode:   phoneCode,
 			PhoneNumber: phoneNumber,
 			Verified:    u.EmailVerified,
-		},
+		}
+	}
+
+	return &Account{
+		BaseAccount: baseAccount,
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthFirebase),
@@ -137,6 +150,7 @@ func (fa *FirebaseAuth) SetCustomClaims(uid string, input map[string]interface{}
 	return authClient.SetCustomUserClaims(ctx, uid, input)
 }
 
+// VerifyToken verifies the id token
 func (fa *FirebaseAuth) VerifyToken(token string) (*AccountProvider, map[string]interface{}, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
@@ -155,6 +169,7 @@ func (fa *FirebaseAuth) VerifyToken(token string) (*AccountProvider, map[string]
 	}, authToken.Claims, nil
 }
 
+// ChangePassword change  the password of user
 func (fa *FirebaseAuth) ChangePassword(uid string, newPassword string) error {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
@@ -185,6 +200,7 @@ func (fa *FirebaseAuth) DeleteUser(uid string) error {
 	return err
 }
 
+// EncodeToken encodes the custom ID Token from Firebase Auth
 func (fa *FirebaseAuth) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
@@ -215,10 +231,13 @@ func (fa *FirebaseAuth) VerifyPassword(providerUserId string, password string) e
 	return errors.New(ErrCodeUnsupported)
 }
 
-func (fa *FirebaseAuth) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
+// RefreshToken verifies and refreshes user token.
+// Firebase Auth doesn't support this
+func (fa *FirebaseAuth) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
 	return nil, errors.New(ErrCodeUnsupported)
 }
 
+// GetOrCreateUserByPhone get or create user by phone number
 func (fa *FirebaseAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, error) {
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)

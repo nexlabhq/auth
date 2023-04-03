@@ -30,10 +30,11 @@ type AccountManagerConfig struct {
 	JWT         *JWTAuthConfig
 	OTP         AuthOTPConfig
 
-	CreateFromToken bool             `envconfig:"AUTH_CREATE_FROM_TOKEN" default:"false"`
-	Enabled2FA      bool             `envconfig:"AUTH_2FA_ENABLED"`
-	DefaultProvider AuthProviderType `envconfig:"DEFAULT_AUTH_PROVIDER" required:"true"`
-	DefaultRole     string           `envconfig:"DEFAULT_ROLE" required:"true"`
+	CreateFromToken      bool             `envconfig:"AUTH_CREATE_FROM_TOKEN" default:"false"`
+	Enabled2FA           bool             `envconfig:"AUTH_2FA_ENABLED"`
+	DefaultProvider      AuthProviderType `envconfig:"DEFAULT_AUTH_PROVIDER" required:"true"`
+	DefaultRole          string           `envconfig:"DEFAULT_ROLE" required:"true"`
+	DefaultRoleAnonymous string           `envconfig:"DEFAULT_ROLE_ANONYMOUS" default:"anonymous"`
 }
 
 // AccountManager account business method
@@ -65,7 +66,9 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 
 	providers := make(map[AuthProviderType]AuthProvider)
 	if config.FirebaseApp != nil {
-		providers[AuthFirebase] = NewFirebaseAuth(config.FirebaseApp)
+		firebaseAuth := NewFirebaseAuth(config.FirebaseApp)
+		firebaseAuth.roleAnonymous = config.DefaultRoleAnonymous
+		providers[AuthFirebase] = firebaseAuth
 	}
 
 	if config.JWT != nil {
@@ -430,8 +433,6 @@ func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interf
 	acc.ID = genID()
 	accInsertInput := map[string]interface{}{
 		"id":            acc.ID,
-		"display_name":  acc.DisplayName,
-		"role":          am.defaultRole,
 		"verified":      acc.Verified,
 		"email_enabled": acc.Email != "",
 		"phone_enabled": acc.PhoneNumber != "",
@@ -439,6 +440,14 @@ func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interf
 			"data": acc.AccountProviders,
 		},
 	}
+	if acc.DisplayName != "" {
+		accInsertInput["display_name"] = acc.DisplayName
+	}
+	role := am.defaultRole
+	if acc.Role != "" {
+		role = acc.Role
+	}
+	accInsertInput["role"] = role
 
 	if acc.Email != "" {
 		accInsertInput["email"] = acc.Email
@@ -516,8 +525,8 @@ func (am *AccountManager) EncodeToken(cred *AccountProvider, options ...AccessTo
 	return am.getCurrentProvider().EncodeToken(cred, options...)
 }
 
-func (am *AccountManager) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
-	return am.getCurrentProvider().RefreshToken(refreshToken, accessToken, options...)
+func (am *AccountManager) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
+	return am.getCurrentProvider().RefreshToken(refreshToken, options...)
 }
 
 // ChangePassword change all providers's password of current user

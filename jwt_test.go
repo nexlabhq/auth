@@ -38,10 +38,10 @@ func TestJWTEncode(t *testing.T) {
 
 	testVerifyToken(tokenResult.AccessToken)
 
-	refreshToken, err := jwtAuth.RefreshToken(tokenResult.RefreshToken, tokenResult.AccessToken, nil)
+	refreshToken, err := jwtAuth.RefreshToken(tokenResult.RefreshToken, nil)
 	assert.NoError(t, err)
 
-	_, err = jwtAuth.RefreshToken(tokenResult.RefreshToken, refreshToken.AccessToken, nil)
+	_, err = jwtAuth.RefreshToken(tokenResult.RefreshToken, nil)
 	assert.EqualError(t, err, ErrCodeTokenMismatched)
 
 	_, _, err = jwtAuth.VerifyToken(tokenResult.RefreshToken)

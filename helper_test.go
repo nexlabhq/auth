@@ -7,12 +7,28 @@ import (
 )
 
 func TestParsePhoneNumber(t *testing.T) {
-	rawPhoneNumber := "+84900000000"
-	code, num, err := parseI18nPhoneNumber(rawPhoneNumber, 84)
-	assert.NoError(t, err)
+	var fixtures = []struct {
+		PhoneCode   int
+		PhoneNumber string
+		PhoneRaw    string
+	}{
+		{
+			84,
+			"0900000000",
+			"+84900000000",
+		},
+		{
+			84,
+			"0357839884",
+			"0357839884",
+		},
+	}
 
-	assert.Equal(t, 84, code)
-	assert.Equal(t, "0900000000", num)
+	for _, f := range fixtures {
+		code, num, err := parseI18nPhoneNumber(f.PhoneRaw, f.PhoneCode)
+		assert.NoError(t, err)
 
-	assert.Equal(t, rawPhoneNumber, formatI18nPhoneNumber(code, num))
+		assert.Equal(t, f.PhoneCode, code)
+		assert.Equal(t, f.PhoneNumber, num)
+	}
 }

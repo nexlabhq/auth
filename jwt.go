@@ -50,11 +50,13 @@ func (jac JWTAuthConfig) Validate() error {
 	return nil
 }
 
+// JWTAuth implements the AuthProvider interface for JWT authentication
 type JWTAuth struct {
 	client *gql.Client
 	config JWTAuthConfig
 }
 
+// NewJWTAuth creates a new JWTAuth instance
 func NewJWTAuth(client *gql.Client, config JWTAuthConfig) *JWTAuth {
 	if config.Cost == 0 {
 		config.Cost = bcrypt.DefaultCost
@@ -301,6 +303,7 @@ func (ja *JWTAuth) validateTokenChecksum(userId string, checksum string) (*Accou
 	return &provider, nil
 }
 
+// VerifyToken decodes and verifies the JWT token
 func (ja *JWTAuth) VerifyToken(token string) (*AccountProvider, map[string]interface{}, error) {
 
 	result, err := ja.decodeToken(token)
@@ -479,7 +482,7 @@ func (ja *JWTAuth) DeleteUser(uid string) error {
 	return nil
 }
 
-func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
+func (ja *JWTAuth) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
 	decodedRefreshToken, err := ja.decodeToken(refreshToken)
 	if err != nil {
 		return nil, err
@@ -489,18 +492,7 @@ func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string, options
 		return nil, errors.New(ErrCodeRefreshTokenAudienceMismatched)
 	}
 
-	decodedToken, err := ja.decodeToken(accessToken)
-	if err != nil && err.Error() != ErrCodeTokenExpired {
-		return nil, err
-	}
-
-	if decodedRefreshToken.JwtID != ja.genRefreshTokenID(decodedToken.JwtID) ||
-		decodedRefreshToken.Subject != decodedToken.Subject ||
-		decodedRefreshToken.IssuedAt != decodedToken.IssuedAt {
-		return nil, errors.New(ErrCodeTokenMismatched)
-	}
-
-	provider, err := ja.validateTokenChecksum(decodedToken.Subject, decodedToken.Checksum)
+	provider, err := ja.validateTokenChecksum(decodedRefreshToken.Subject, decodedRefreshToken.Checksum)
 	if err != nil {
 		return nil, err
 	}
