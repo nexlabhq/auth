@@ -482,7 +482,8 @@ func (ja *JWTAuth) DeleteUser(uid string) error {
 	return nil
 }
 
-func (ja *JWTAuth) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
+// VerifyRefreshToken decode, verify signature and checksum of the refresh token
+func (ja *JWTAuth) VerifyRefreshToken(refreshToken string, options ...AccessTokenOption) (*AccountProvider, error) {
 	decodedRefreshToken, err := ja.decodeToken(refreshToken)
 	if err != nil {
 		return nil, err
@@ -492,11 +493,15 @@ func (ja *JWTAuth) RefreshToken(refreshToken string, options ...AccessTokenOptio
 		return nil, errors.New(ErrCodeRefreshTokenAudienceMismatched)
 	}
 
-	provider, err := ja.validateTokenChecksum(decodedRefreshToken.Subject, decodedRefreshToken.Checksum)
+	return ja.validateTokenChecksum(decodedRefreshToken.Subject, decodedRefreshToken.Checksum)
+}
+
+// RefreshToken verify and generate new tokens
+func (ja *JWTAuth) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
+	provider, err := ja.VerifyRefreshToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
-
 	return ja.EncodeToken(provider, []AuthScope{ScopeOpenID, ScopeOfflineAccess}, options...)
 }
 

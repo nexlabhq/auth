@@ -231,6 +231,12 @@ func (fa *FirebaseAuth) VerifyPassword(providerUserId string, password string) e
 	return errors.New(ErrCodeUnsupported)
 }
 
+// VerifyRefreshToken decode, verify signature and checksum of the refresh token
+// Firebase Auth doesn't support this
+func (fa *FirebaseAuth) VerifyRefreshToken(refreshToken string, options ...AccessTokenOption) (*AccountProvider, error) {
+	return nil, errors.New(ErrCodeUnsupported)
+}
+
 // RefreshToken verifies and refreshes user token.
 // Firebase Auth doesn't support this
 func (fa *FirebaseAuth) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {

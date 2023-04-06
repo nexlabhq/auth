@@ -867,7 +867,7 @@ func (am *AccountManager) newOTPActivity(sessionVariables map[string]string, acc
 }
 
 // VerifyOTP verify if the otp code matches the current account
-func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input VerifyOTPInput) (*AccessToken, error) {
+func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input VerifyOTPInput, options ...AccessTokenOption) (*AccessToken, error) {
 
 	if !am.otp.Enabled {
 		return nil, errors.New(ErrCodeUnsupported)
@@ -1042,7 +1042,7 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 		return nil, err
 	}
 
-	return am.EncodeToken(&account.AccountProviders[0], input.Scopes)
+	return am.EncodeToken(&account.AccountProviders[0], input.Scopes, options...)
 }
 
 // newActivity create an user activity model
