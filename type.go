@@ -41,6 +41,8 @@ const (
 	XHasuraDefaultRole  = "x-hasura-default-role"
 	XHasuraAllowedRoles = "x-hasura-allowed-roles"
 	XHasuraUserID       = "x-hasura-user-id"
+	XHasuraUserEmail    = "x-hasura-user-email"
+	XHasuraDisplayName  = "x-hasura-display-name"
 	XHasuraRequestIP    = "x-hasura-request-ip"
 	XHasuraLatitude     = "x-hasura-latitude"
 	XHasuraLongitude    = "x-hasura-longitude"

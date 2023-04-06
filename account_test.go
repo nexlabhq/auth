@@ -124,7 +124,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 		Email:    email,
 		Password: password,
 		Verified: true,
-	})
+	}, nil)
 	assert.Nil(t, err)
 	assert.NotNil(t, user)
 

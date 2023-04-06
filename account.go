@@ -209,7 +209,7 @@ func (am *AccountManager) FindOne(where map[string]interface{}) (*Account, error
 }
 
 // CreateAccountWithProvider get or create account with provider
-func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (*Account, error) {
+func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, extraFields map[string]interface{}) (*Account, error) {
 
 	ctx := context.Background()
 
@@ -317,6 +317,12 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (
 
 	if input.PhoneNumber != "" {
 		accInsertInput["phone_number"] = input.PhoneNumber
+	}
+
+	if len(extraFields) > 0 {
+		for k, v := range extraFields {
+			accInsertInput[k] = v
+		}
 	}
 
 	uid, err := am.InsertAccount(accInsertInput)
