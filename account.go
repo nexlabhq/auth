@@ -531,6 +531,10 @@ func (am *AccountManager) EncodeToken(cred *AccountProvider, scopes []AuthScope,
 	return am.getCurrentProvider().EncodeToken(cred, scopes, options...)
 }
 
+func (am *AccountManager) VerifyRefreshToken(refreshToken string) (*AccountProvider, error) {
+	return am.getCurrentProvider().VerifyRefreshToken(refreshToken)
+}
+
 func (am *AccountManager) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
 	return am.getCurrentProvider().RefreshToken(refreshToken, options...)
 }

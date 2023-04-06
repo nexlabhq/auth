@@ -483,7 +483,7 @@ func (ja *JWTAuth) DeleteUser(uid string) error {
 }
 
 // VerifyRefreshToken decode, verify signature and checksum of the refresh token
-func (ja *JWTAuth) VerifyRefreshToken(refreshToken string, options ...AccessTokenOption) (*AccountProvider, error) {
+func (ja *JWTAuth) VerifyRefreshToken(refreshToken string) (*AccountProvider, error) {
 	decodedRefreshToken, err := ja.decodeToken(refreshToken)
 	if err != nil {
 		return nil, err

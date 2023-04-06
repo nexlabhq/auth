@@ -182,7 +182,7 @@ type AuthProvider interface {
 	EncodeToken(cred *AccountProvider, scopes []AuthScope, options ...AccessTokenOption) (*AccessToken, error)
 	RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error)
 	VerifyToken(token string) (*AccountProvider, map[string]interface{}, error)
-	VerifyRefreshToken(refreshToken string, options ...AccessTokenOption) (*AccountProvider, error)
+	VerifyRefreshToken(refreshToken string) (*AccountProvider, error)
 	VerifyPassword(uid string, password string) error
 	ChangePassword(uid string, newPassword string) error
 	SignInWithEmailAndPassword(email string, password string) (*Account, error)
