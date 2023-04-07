@@ -100,13 +100,13 @@ func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
 		BaseAccount: BaseAccount{
 			ID:          input.ID,
 			Email:       input.Email,
-			Password:    string(hashedPassword),
 			DisplayName: input.DisplayName,
 			PhoneCode:   input.PhoneCode,
 			PhoneNumber: input.PhoneNumber,
 			Role:        input.Role,
 			Verified:    input.Verified,
 		},
+		Password: string(hashedPassword),
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),

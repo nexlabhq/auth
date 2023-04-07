@@ -152,13 +152,13 @@ type BaseAccount struct {
 	PhoneCode   int    `json:"phone_code" graphql:"phone_code"`
 	PhoneNumber string `json:"phone_number" graphql:"phone_number"`
 	DisplayName string `json:"display_name" graphql:"display_name"`
-	Password    string `json:"password,omitempty" graphql:"password"`
 	Role        string `json:"role" graphql:"role"`
 	Verified    bool   `json:"verified" graphql:"verified"`
 }
 
 type Account struct {
 	BaseAccount
+	Password         string            `json:"password,omitempty" graphql:"password"`
 	AccountProviders []AccountProvider `json:"account_providers" graphql:"account_providers"`
 }
 
