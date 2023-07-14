@@ -1384,7 +1384,7 @@ func (am *AccountManager) PromoteAnonymousUser(accountID string, input *CreateAc
 	var query struct {
 		Accounts []struct {
 			BaseAccount
-			AccountProviders []AccountProvider `graphql:"account_providers(where: providerWhere)"`
+			AccountProviders []AccountProvider `graphql:"account_providers(where: $providerWhere)"`
 		} `graphql:"account(where: $where, limit: 1)"`
 	}
 
