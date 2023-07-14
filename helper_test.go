@@ -32,3 +32,18 @@ func TestParsePhoneNumber(t *testing.T) {
 		assert.Equal(t, f.PhoneNumber, num)
 	}
 }
+
+func TestGetPtr(t *testing.T) {
+	value := "hello"
+	assert.Equal(t, value, getPtr(value))
+}
+
+func TestPtrEmpty(t *testing.T) {
+	assert.Equal(t, true, isStringPtrEmpty(nil))
+	assert.Equal(t, true, isStringPtrEmpty(getPtr("")))
+	assert.Equal(t, false, isStringPtrEmpty(getPtr("hello")))
+
+	assert.Equal(t, false, isTrue(nil))
+	assert.Equal(t, false, isTrue(getPtr(false)))
+	assert.Equal(t, true, isTrue(getPtr(true)))
+}

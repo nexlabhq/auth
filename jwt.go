@@ -80,15 +80,16 @@ func (ja JWTAuth) GetName() AuthProviderType {
 }
 
 func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
-	if input.Password == "" {
+	if isStringPtrEmpty(input.Password) {
 		return nil, errors.New(ErrCodePasswordRequired)
 	}
 
-	if input.ID == "" {
-		input.ID = genID()
+	if isStringPtrEmpty(input.ID) {
+		id := genID()
+		input.ID = &id
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), ja.config.Cost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*input.Password), ja.config.Cost)
 	if err != nil {
 		return nil, err
 	}
@@ -97,20 +98,12 @@ func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
 		"checksum": genRandomString(ja.config.ChecksumLength),
 	}
 	return &Account{
-		BaseAccount: BaseAccount{
-			ID:          input.ID,
-			Email:       input.Email,
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Role:        input.Role,
-			Verified:    input.Verified,
-		},
-		Password: string(hashedPassword),
+		BaseAccount: input.ToBaseAccount(),
+		Password:    string(hashedPassword),
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
-				ProviderUserID: input.ID,
+				ProviderUserID: *input.ID,
 				Metadata:       metadata,
 			},
 		},
@@ -337,14 +330,15 @@ func (ja *JWTAuth) ChangePassword(uid string, newPassword string) error {
 		} `graphql:"update_account(where: $where, _set: $setValues)"`
 	}
 
+	sPassword := string(hashedPassword)
 	variables := map[string]interface{}{
 		"where": account_bool_exp{
 			"id": map[string]string{
 				"_eq": uid,
 			},
 		},
-		"setValues": account_set_input{
-			"password": string(hashedPassword),
+		"setValues": UpdateAccountInput{
+			Password: &sPassword,
 		},
 	}
 
@@ -538,20 +532,17 @@ func (ja *JWTAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, 
 	metadata := map[string]interface{}{
 		"checksum": genRandomString(ja.config.ChecksumLength),
 	}
+
+	var providerUserID string
+	if input.ID != nil {
+		providerUserID = *input.ID
+	}
 	return &Account{
-		BaseAccount: BaseAccount{
-			ID:          input.ID,
-			Email:       input.Email,
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Role:        input.Role,
-			Verified:    input.Verified,
-		},
+		BaseAccount: input.ToBaseAccount(),
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
-				ProviderUserID: input.ID,
+				ProviderUserID: providerUserID,
 				Metadata:       metadata,
 			},
 		},
@@ -559,19 +550,45 @@ func (ja *JWTAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, 
 }
 
 func (ja *JWTAuth) UpdateUser(uid string, input UpdateAccountInput) (*Account, error) {
+	baseAccount := input.ToBaseAccount()
+	baseAccount.ID = uid
 	return &Account{
-		BaseAccount: BaseAccount{
-			ID:          uid,
-			Email:       input.Email,
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Verified:    input.Verified,
-		},
+		BaseAccount: baseAccount,
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
 				ProviderUserID: uid,
+			},
+		},
+	}, nil
+}
+
+// PromoteAnonymousUser promotes the current anonymous user to the default user role
+func (ja *JWTAuth) PromoteAnonymousUser(providerID string, input *CreateAccountInput) (*Account, error) {
+
+	var sPassword string
+	if !isStringPtrEmpty(input.Password) {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*input.Password), ja.config.Cost)
+		if err != nil {
+			return nil, err
+		}
+		sPassword = string(hashedPassword)
+	}
+
+	metadata := map[string]interface{}{
+		"checksum": genRandomString(ja.config.ChecksumLength),
+	}
+
+	input.ID = &providerID
+	baseAccount := input.ToBaseAccount()
+	return &Account{
+		BaseAccount: baseAccount,
+		Password:    sPassword,
+		AccountProviders: []AccountProvider{
+			{
+				Name:           string(AuthJWT),
+				ProviderUserID: providerID,
+				Metadata:       metadata,
 			},
 		},
 	}, nil

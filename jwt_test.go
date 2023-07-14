@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestJWTEncode(t *testing.T) {
+func TestJWT_encodeToken(t *testing.T) {
 
 	jwtAuth := NewJWTAuth(nil, JWTAuthConfig{
 		SessionKey: "randomsecret",
@@ -45,4 +45,49 @@ func TestJWTEncode(t *testing.T) {
 	assert.EqualError(t, err, ErrCodeTokenAudienceMismatched)
 
 	testVerifyToken(refreshToken.AccessToken)
+}
+
+func TestJWT_encodeTokenWithClaims(t *testing.T) {
+
+	jwtAuth := NewJWTAuth(nil, JWTAuthConfig{
+		SessionKey: "randomsecret",
+		TTL:        time.Hour,
+		RefreshTTL: 2 * time.Hour,
+		Issuer:     "https://nexlab.tech",
+		Algorithm:  jose.HS256,
+	})
+
+	fixtures := []struct {
+		UserID string
+		Claims map[string]interface{}
+	}{
+		{
+			uuid.NewString(),
+			map[string]interface{}{
+				"foo":    "bar",
+				"active": false,
+			},
+		},
+		{
+			uuid.NewString(),
+			map[string]interface{}{
+				"x-hasura-user-id": "1",
+				"x-hasura-role":    "admin",
+			},
+		},
+	}
+
+	for i, f := range fixtures {
+		tokenResult, err := jwtAuth.EncodeToken(&AccountProvider{
+			ProviderUserID: f.UserID,
+		}, []AuthScope{ScopeOpenID, ScopeOfflineAccess}, NewTokenClaims(f.Claims))
+		assert.NoError(t, err, "%d", i)
+		assert.NotEmpty(t, tokenResult.AccessToken, "%d", i)
+		assert.NotEmpty(t, tokenResult.RefreshToken, "%d", i)
+		decodedToken, err := jwtAuth.decodeToken(tokenResult.AccessToken)
+		assert.NoError(t, err, "%d", i)
+		assert.Equal(t, f.UserID, decodedToken.Subject, "%d", i)
+		assert.Equal(t, f.Claims, decodedToken.CustomClaims, "%d", i)
+	}
+
 }

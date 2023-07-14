@@ -136,6 +136,26 @@ func getPositionFromSession(sessionVariables map[string]string) (*GeoPoint, erro
 	return result, nil
 }
 
+func getPtr[V any](value V) *V {
+	return &value
+}
+
+func isTrue(ptr *bool) bool {
+	if ptr != nil && *ptr {
+		return true
+	}
+
+	return false
+}
+
+func isStringPtrEmpty(ptr *string) bool {
+	if ptr != nil && *ptr != "" {
+		return false
+	}
+
+	return true
+}
+
 // sliceIndex returns the index of the first occurrence of v in s,
 // or -1 if not present.
 func sliceIndex[E comparable](s []E, v E) int {

@@ -213,17 +213,18 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 
 	ctx := context.Background()
 
-	if (input.EmailEnabled || (!input.EmailEnabled && !input.PhoneEnabled)) && input.Email == "" {
+	if (isTrue(input.EmailEnabled) || (isTrue(input.EmailEnabled) && !isTrue(input.PhoneEnabled))) &&
+		isStringPtrEmpty(input.Email) {
 		return nil, errors.New(ErrCodeEmailRequired)
 	}
 
-	if input.PhoneEnabled && (input.PhoneCode == 0 || input.PhoneNumber == "") {
+	if isTrue(input.PhoneEnabled) && (input.PhoneCode == nil || isStringPtrEmpty(input.PhoneNumber)) {
 		return nil, errors.New(ErrCodePhoneRequired)
 	}
 
 	// set default login as email
-	if !input.EmailEnabled && !input.PhoneEnabled {
-		input.EmailEnabled = true
+	if !isTrue(input.EmailEnabled) && !isTrue(input.PhoneEnabled) {
+		input.EmailEnabled = getPtr(true)
 	}
 
 	// check if the account exists
@@ -238,10 +239,10 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 
 	condition := make([]map[string]interface{}, 0)
 
-	if input.Email != "" {
+	if !isStringPtrEmpty(input.Email) {
 		condition = append(condition, map[string]interface{}{
 			"email": map[string]string{
-				"_eq": input.Email,
+				"_eq": *input.Email,
 			},
 			"email_enabled": map[string]bool{
 				"_eq": true,
@@ -249,12 +250,12 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 		})
 	}
 
-	if input.PhoneNumber != "" {
+	if !isStringPtrEmpty(input.PhoneNumber) {
 		condition = append(condition, map[string]interface{}{
-			"phone_code": map[string]int{
+			"phone_code": map[string]any{
 				"_eq": input.PhoneCode,
 			},
-			"phone_number": map[string]string{
+			"phone_number": map[string]any{
 				"_eq": input.PhoneNumber,
 			},
 			"phone_enabled": map[string]bool{
@@ -284,7 +285,7 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 		return nil, errors.New(ErrCodeAccountExisted)
 	}
 
-	input.ID = genID()
+	input.ID = getPtr(genID())
 	acc, err := am.CreateProviderAccount(input)
 
 	if err != nil {
@@ -307,15 +308,15 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 		accInsertInput["password"] = acc.Password
 	}
 
-	if input.Email != "" {
+	if !isStringPtrEmpty(input.Email) {
 		accInsertInput["email"] = input.Email
 	}
 
-	if input.PhoneCode != 0 {
+	if input.PhoneCode != nil && *input.PhoneCode != 0 {
 		accInsertInput["phone_code"] = input.PhoneCode
 	}
 
-	if input.PhoneNumber != "" {
+	if !isStringPtrEmpty(input.PhoneNumber) {
 		accInsertInput["phone_number"] = input.PhoneNumber
 	}
 
@@ -974,8 +975,8 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 
 				updateVariables := map[string]interface{}{
 					"id": graphql.String(account.ID),
-					"_set": account_set_input{
-						"disabled": true,
+					"_set": UpdateAccountInput{
+						Disabled: getPtr(true),
 					},
 				}
 
@@ -988,9 +989,9 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 	// insert account provider if not exist
 	if len(account.AccountProviders) == 0 {
 		acc, err := am.getCurrentProvider().GetOrCreateUserByPhone(&CreateAccountInput{
-			ID:          account.ID,
-			PhoneCode:   int(input.PhoneCode),
-			PhoneNumber: input.PhoneNumber,
+			ID:          &account.ID,
+			PhoneCode:   &input.PhoneCode,
+			PhoneNumber: &input.PhoneNumber,
 		})
 		if err != nil {
 			return nil, err
@@ -1035,8 +1036,8 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 
 	updateVariables := map[string]interface{}{
 		"id": graphql.String(account.ID),
-		"_set": account_set_input{
-			"verified": true,
+		"_set": UpdateAccountInput{
+			Verified: getPtr(true),
 		},
 		"activities": []account_activity_insert_input{activity},
 	}
@@ -1201,9 +1202,9 @@ func (am *AccountManager) Generate2FaOTP(sessionVariables map[string]string, acc
 
 		updateVariables := map[string]interface{}{
 			"id": graphql.String(accountID),
-			"_set": account_set_input{
-				"phone_code":   pCode,
-				"phone_number": pNumber,
+			"_set": UpdateAccountInput{
+				PhoneCode:   &pCode,
+				PhoneNumber: &pNumber,
 			},
 			"activities": []account_activity_insert_input{activity},
 		}
@@ -1322,10 +1323,10 @@ func (am *AccountManager) Verify2FaOTP(sessionVariables map[string]string, accou
 	if type2FA == Auth2FASms && !account.PhoneEnabled {
 
 		_, err = am.getCurrentProvider().UpdateUser(account.AccountProviders[0].ProviderUserID, UpdateAccountInput{
-			PhoneCode:    account.PhoneCode,
-			PhoneNumber:  account.PhoneNumber,
-			PhoneEnabled: true,
-			Verified:     true,
+			PhoneCode:    &account.PhoneCode,
+			PhoneNumber:  &account.PhoneNumber,
+			PhoneEnabled: getPtr(true),
+			Verified:     getPtr(true),
 		})
 
 		if err != nil {
@@ -1343,8 +1344,8 @@ func (am *AccountManager) Verify2FaOTP(sessionVariables map[string]string, accou
 
 		updateVariables := map[string]interface{}{
 			"id": graphql.String(accountID),
-			"_set": account_set_input{
-				"phone_enabled": true,
+			"_set": UpdateAccountInput{
+				PhoneEnabled: getPtr(true),
 			},
 			"activities": []account_activity_insert_input{activity},
 		}
@@ -1371,4 +1372,95 @@ func (am *AccountManager) Verify2FaOTP(sessionVariables map[string]string, accou
 	}
 
 	return nil
+}
+
+// PromoteAnonymousUser promotes the current anonymous user to the default user role
+func (am *AccountManager) PromoteAnonymousUser(providerUserID string, input *CreateAccountInput) (*Account, error) {
+
+	if providerUserID == "" {
+		return nil, errors.New(ErrCodeAccountNotFound)
+	}
+
+	var query struct {
+		Accounts []Account `graphql:"account(where: $where, limit: 1)"`
+	}
+
+	variables := map[string]interface{}{
+		"where": account_bool_exp{
+			"account_providers": map[string]any{
+				"provider_user_id": map[string]any{
+					"_eq": providerUserID,
+				},
+				"provider_name": am.providerType,
+			},
+		},
+	}
+
+	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountByProvider"))
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(query.Accounts) == 0 {
+		return nil, errors.New(ErrCodeAccountNotFound)
+	}
+
+	u := query.Accounts[0]
+
+	if u.Role != am.defaultRole {
+		return nil, errors.New(ErrCodeAccountNotAnonymous)
+	}
+
+	account, err := am.getCurrentProvider().PromoteAnonymousUser(providerUserID, input)
+	if err != nil {
+		return nil, err
+	}
+
+	var updateMutation struct {
+		UpdateAccount struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"update_account(where: $where, _set: $_set)"`
+		UpsertProviders struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"insert_account_provider(objects: $providers, on_conflict: {constraint: account_provider_pkey, update_columns: [provider_user_id, metadata]})"`
+	}
+
+	updateValues := UpdateAccountInput{
+		Email:        input.Email,
+		PhoneCode:    input.PhoneCode,
+		PhoneNumber:  input.PhoneNumber,
+		DisplayName:  input.DisplayName,
+		Verified:     input.Verified,
+		EmailEnabled: input.EmailEnabled,
+		PhoneEnabled: input.PhoneEnabled,
+		Role:         input.Role,
+	}
+	if account.Password != "" {
+		updateValues.Password = &account.Password
+	}
+
+	provider := account.AccountProviders[0]
+	provider.AccountID = &u.ID
+	mutationVariables := map[string]any{
+		"where": account_bool_exp{
+			"id": map[string]any{
+				"_eq": u.ID,
+			},
+		},
+		"_set":      updateValues,
+		"providers": []account_provider_insert_input{account_provider_insert_input(provider)},
+	}
+
+	err = am.gqlClient.Mutate(context.TODO(), &updateMutation, mutationVariables, graphql.OperationName("PromoteAnonymousAccount"))
+	if err != nil {
+		return nil, err
+	}
+
+	baseAccount := updateValues.ToBaseAccount()
+	baseAccount.ID = u.ID
+	return &Account{
+		BaseAccount:      baseAccount,
+		AccountProviders: []AccountProvider{provider},
+	}, nil
 }

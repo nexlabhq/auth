@@ -33,25 +33,38 @@ func (fa *FirebaseAuth) CreateUser(input *CreateAccountInput) (*Account, error) 
 	}
 	params := (&auth.UserToCreate{})
 
-	if input.EmailEnabled {
-		params = params.Email(input.Email).
-			EmailVerified(input.Verified)
+	if isTrue(input.EmailEnabled) {
+		if isStringPtrEmpty(input.Email) {
+			return nil, errors.New(ErrCodeEmailRequired)
+		}
+		if input.Verified == nil {
+			verified := false
+			input.Verified = &verified
+		}
+		params = params.Email(*input.Email).
+			EmailVerified(*input.Verified)
 	}
 
-	if input.DisplayName != "" {
-		params = params.DisplayName(input.DisplayName)
+	if !isStringPtrEmpty(input.DisplayName) {
+		params = params.DisplayName(*input.DisplayName)
 	}
-	if input.Password != "" {
-		params = params.Password(input.Password)
+	if !isStringPtrEmpty(input.Password) {
+		params = params.Password(*input.Password)
 	}
 
-	if input.ID == "" {
-		input.ID = genID()
+	if isStringPtrEmpty(input.ID) {
+		id := genID()
+		input.ID = &id
 	}
-	params = params.UID((input.ID))
+	params = params.UID(*input.ID)
 
-	if input.PhoneNumber != "" && input.PhoneEnabled {
-		params = params.PhoneNumber(formatI18nPhoneNumber(input.PhoneCode, input.PhoneNumber))
+	if !isStringPtrEmpty(input.PhoneNumber) && isTrue(input.PhoneEnabled) {
+		phoneCode := 0
+		if input.PhoneCode != nil {
+			phoneCode = *input.PhoneCode
+		}
+
+		params = params.PhoneNumber(formatI18nPhoneNumber(phoneCode, *input.PhoneNumber))
 	}
 
 	u, err := authClient.CreateUser(ctx, params)
@@ -60,15 +73,7 @@ func (fa *FirebaseAuth) CreateUser(input *CreateAccountInput) (*Account, error) 
 	}
 
 	return &Account{
-		BaseAccount: BaseAccount{
-			ID:          input.ID,
-			Email:       input.Email,
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Role:        input.Role,
-			Verified:    input.Verified,
-		},
+		BaseAccount: input.ToBaseAccount(),
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthFirebase),
@@ -245,6 +250,9 @@ func (fa *FirebaseAuth) RefreshToken(refreshToken string, options ...AccessToken
 
 // GetOrCreateUserByPhone get or create user by phone number
 func (fa *FirebaseAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, error) {
+	if input.PhoneCode == nil || isStringPtrEmpty(input.PhoneNumber) {
+		return nil, errors.New(ErrCodePhoneRequired)
+	}
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
 
@@ -252,7 +260,7 @@ func (fa *FirebaseAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Acco
 		return nil, err
 	}
 
-	phoneNumber := formatI18nPhoneNumber(input.PhoneCode, input.PhoneNumber)
+	phoneNumber := formatI18nPhoneNumber(*input.PhoneCode, *input.PhoneNumber)
 	user, err := authClient.GetUserByPhoneNumber(context.TODO(), phoneNumber)
 
 	if err != nil && !auth.IsUserNotFound(err) {
@@ -260,45 +268,11 @@ func (fa *FirebaseAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Acco
 	}
 
 	if user == nil {
-		params := (&auth.UserToCreate{})
-
-		if input.EmailEnabled {
-			params = params.Email(input.Email).
-				EmailVerified(input.Verified)
-		}
-
-		if input.DisplayName != "" {
-			params = params.DisplayName(input.DisplayName)
-		}
-		if input.Password != "" {
-			params = params.Password(input.Password)
-		}
-
-		if input.ID == "" {
-			input.ID = genID()
-		}
-		params = params.UID(input.ID)
-
-		if input.PhoneNumber != "" && input.PhoneEnabled {
-			params = params.PhoneNumber(phoneNumber)
-		}
-
-		user, err = authClient.CreateUser(ctx, params)
-		if err != nil {
-			return nil, err
-		}
+		return fa.CreateUser(input)
 	}
 
 	return &Account{
-		BaseAccount: BaseAccount{
-			ID:          input.ID,
-			Email:       input.Email,
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Role:        input.Role,
-			Verified:    input.Verified,
-		},
+		BaseAccount: input.ToBaseAccount(),
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthFirebase),
@@ -320,15 +294,16 @@ func (fa *FirebaseAuth) UpdateUser(uid string, input UpdateAccountInput) (*Accou
 		if !auth.IsUserNotFound(err) {
 			return nil, err
 		}
+		providerName := fa.GetName()
 		return fa.CreateUser(&CreateAccountInput{
-			ID:               uid,
+			ID:               &uid,
 			DisplayName:      input.DisplayName,
 			Email:            input.Email,
 			EmailEnabled:     input.EmailEnabled,
 			PhoneCode:        input.PhoneCode,
 			PhoneNumber:      input.PhoneNumber,
 			PhoneEnabled:     input.PhoneEnabled,
-			AuthProviderType: fa.GetName(),
+			AuthProviderType: &providerName,
 			Password:         input.Password,
 			Verified:         input.Verified,
 		})
@@ -336,32 +311,30 @@ func (fa *FirebaseAuth) UpdateUser(uid string, input UpdateAccountInput) (*Accou
 
 	shouldUpdate := false
 	data := &auth.UserToUpdate{}
-	if input.Password != "" {
-		data = data.Password(input.Password)
+	if !isStringPtrEmpty(input.Password) {
+		data = data.Password(*input.Password)
 		shouldUpdate = true
 	}
 
-	if input.PhoneNumber != "" {
-		i18nPhone := formatI18nPhoneNumber(input.PhoneCode, input.PhoneNumber)
+	if !isStringPtrEmpty(input.PhoneNumber) {
+		i18nPhone := formatI18nPhoneNumber(*input.PhoneCode, *input.PhoneNumber)
 		if i18nPhone != u.PhoneNumber {
 			data = data.PhoneNumber(i18nPhone)
 			shouldUpdate = true
 		}
 	}
-	if input.Email != "" && input.Email != u.Email {
-		data = data.Email(input.Email).EmailVerified(input.EmailEnabled)
+	if !isStringPtrEmpty(input.Email) && *input.Email != u.Email {
+		emailEnabled := false
+		if input.EmailEnabled != nil {
+			emailEnabled = *input.EmailEnabled
+		}
+		data = data.Email(*input.Email).EmailVerified(emailEnabled)
 		shouldUpdate = true
 	}
 
+	baseAccount := input.ToBaseAccount()
 	acc := &Account{
-		BaseAccount: BaseAccount{
-			ID:          uid,
-			Email:       input.Email,
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Verified:    input.Verified,
-		},
+		BaseAccount: baseAccount,
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthFirebase),
@@ -380,4 +353,63 @@ func (fa *FirebaseAuth) UpdateUser(uid string, input UpdateAccountInput) (*Accou
 	}
 
 	return acc, nil
+}
+
+// PromoteAnonymousUser promotes the current anonymous user to the default user role
+func (fa *FirebaseAuth) PromoteAnonymousUser(uid string, input *CreateAccountInput) (*Account, error) {
+	ctx := context.Background()
+	authClient, err := fa.App.Auth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	user, err := authClient.GetUser(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(user.ProviderUserInfo) > 0 || user.Email != "" {
+		return nil, errors.New(ErrCodeAccountNotAnonymous)
+	}
+
+	data := &auth.UserToUpdate{}
+
+	if !isStringPtrEmpty(input.DisplayName) {
+		data = data.DisplayName(*input.DisplayName)
+	}
+
+	if !isStringPtrEmpty(input.Password) {
+		data = data.Password(*input.Password)
+	}
+
+	if !isStringPtrEmpty(input.PhoneNumber) {
+		phoneCode := 0
+		if input.PhoneCode != nil {
+			phoneCode = *input.PhoneCode
+		}
+		i18nPhone := formatI18nPhoneNumber(phoneCode, *input.PhoneNumber)
+		data = data.PhoneNumber(i18nPhone)
+	}
+
+	if !isStringPtrEmpty(input.Email) {
+		if input.EmailEnabled == nil {
+			emailEnabled := false
+			input.EmailEnabled = &emailEnabled
+		}
+		data = data.Email(*input.Email).EmailVerified(*input.EmailEnabled)
+	}
+
+	u, err := authClient.UpdateUser(ctx, uid, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Account{
+		BaseAccount: input.ToBaseAccount(),
+		AccountProviders: []AccountProvider{
+			{
+				Name:           string(AuthFirebase),
+				ProviderUserID: u.UID,
+			},
+		},
+	}, nil
 }

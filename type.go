@@ -66,6 +66,7 @@ const (
 	ErrCodePasswordNotMatch                 = "password_not_match"
 	ErrCodeCurrentPasswordNotMatch          = "current_password_not_match"
 	ErrCodeAccountNotFound                  = "account_not_found"
+	ErrCodeAccountNotAnonymous              = "account_not_anonymous"
 	ErrCodeAccountTemporarilyLocked         = "account_temporarily_locked"
 	ErrCodeAccountDisabled                  = "account_disabled"
 	ErrCodeAccountExisted                   = "account_existed"
@@ -104,33 +105,106 @@ type CreateUserOutput struct {
 	ID string `json:"id"`
 }
 
+// CreateAccountInput represents the account insert input
 type CreateAccountInput struct {
-	ID               string           `json:"id"`
-	DisplayName      string           `json:"display_name"`
-	Email            string           `json:"email"`
-	PhoneCode        int              `json:"phone_code"`
-	PhoneNumber      string           `json:"phone_number"`
-	Role             string           `json:"role"`
-	Password         string           `json:"password,omitempty"`
-	Verified         bool             `json:"verified"`
-	AuthProviderType AuthProviderType `json:"auth_provider_type"`
-	EmailEnabled     bool             `json:"email_enabled"`
-	PhoneEnabled     bool             `json:"phone_enabled"`
+	ID               *string           `json:"id,omitempty"`
+	DisplayName      *string           `json:"display_name,omitempty"`
+	Email            *string           `json:"email,omitempty"`
+	PhoneCode        *int              `json:"phone_code,omitempty"`
+	PhoneNumber      *string           `json:"phone_number,omitempty"`
+	Role             *string           `json:"role,omitempty"`
+	Password         *string           `json:"password,omitempty"`
+	Verified         *bool             `json:"verified,omitempty"`
+	AuthProviderType *AuthProviderType `json:"auth_provider_type,omitempty"`
+	EmailEnabled     *bool             `json:"email_enabled,omitempty"`
+	PhoneEnabled     *bool             `json:"phone_enabled,omitempty"`
 }
 
+// ToBaseAccount converts to BaseAccount struct
+func (cai CreateAccountInput) ToBaseAccount() BaseAccount {
+	result := BaseAccount{}
+	if cai.ID != nil {
+		result.ID = *cai.ID
+	}
+	if cai.DisplayName != nil {
+		result.DisplayName = *cai.DisplayName
+	}
+	if cai.Email != nil {
+		result.Email = *cai.Email
+	}
+	if cai.PhoneCode != nil {
+		result.PhoneCode = *cai.PhoneCode
+	}
+	if cai.PhoneNumber != nil {
+		result.PhoneNumber = *cai.PhoneNumber
+	}
+	if cai.Verified != nil {
+		result.Verified = *cai.Verified
+	}
+	if cai.EmailEnabled != nil {
+		result.EmailEnabled = *cai.EmailEnabled
+	}
+	if cai.PhoneEnabled != nil {
+		result.PhoneEnabled = *cai.PhoneEnabled
+	}
+	if cai.Role != nil {
+		result.Role = *cai.Role
+	}
+
+	return result
+}
+
+// UpdateAccountInput represents the update account input
 type UpdateAccountInput struct {
-	DisplayName  string `json:"display_name"`
-	Email        string `json:"email"`
-	PhoneCode    int    `json:"phone_code"`
-	PhoneNumber  string `json:"phone_number"`
-	Password     string `json:"password,omitempty"`
-	Verified     bool   `json:"verified"`
-	EmailEnabled bool   `json:"email_enabled"`
-	PhoneEnabled bool   `json:"phone_enabled"`
+	DisplayName  *string `json:"display_name,omitempty"`
+	Email        *string `json:"email,omitempty"`
+	PhoneCode    *int    `json:"phone_code,omitempty"`
+	PhoneNumber  *string `json:"phone_number,omitempty"`
+	Password     *string `json:"password,omitempty"`
+	Verified     *bool   `json:"verified,omitempty"`
+	EmailEnabled *bool   `json:"email_enabled,omitempty"`
+	PhoneEnabled *bool   `json:"phone_enabled,omitempty"`
+	Role         *string `json:"role,omitempty"`
+	Disabled     *bool   `json:"disabled,omitempty"`
+}
+
+// GetGraphQLType returns the graphql schema type
+func (uai UpdateAccountInput) GetGraphQLType() string {
+	return "account_set_input"
+}
+
+// ToBaseAccount converts to BaseAccount struct
+func (uai UpdateAccountInput) ToBaseAccount() BaseAccount {
+	result := BaseAccount{}
+	if uai.DisplayName != nil {
+		result.DisplayName = *uai.DisplayName
+	}
+	if uai.Email != nil {
+		result.Email = *uai.Email
+	}
+	if uai.PhoneCode != nil {
+		result.PhoneCode = *uai.PhoneCode
+	}
+	if uai.PhoneNumber != nil {
+		result.PhoneNumber = *uai.PhoneNumber
+	}
+	if uai.Verified != nil {
+		result.Verified = *uai.Verified
+	}
+	if uai.EmailEnabled != nil {
+		result.EmailEnabled = *uai.EmailEnabled
+	}
+	if uai.PhoneEnabled != nil {
+		result.PhoneEnabled = *uai.PhoneEnabled
+	}
+	if uai.Role != nil {
+		result.Role = *uai.Role
+	}
+
+	return result
 }
 
 type account_insert_input map[string]interface{}
-type account_set_input map[string]interface{}
 type account_bool_exp map[string]interface{}
 type account_provider_bool_exp map[string]interface{}
 type account_activity_bool_exp map[string]interface{}
@@ -147,13 +221,15 @@ type account_provider_insert_input AccountProvider
 type account_provider_set_input map[string]interface{}
 
 type BaseAccount struct {
-	ID          string `json:"id" graphql:"id"`
-	Email       string `json:"email" graphql:"email"`
-	PhoneCode   int    `json:"phone_code" graphql:"phone_code"`
-	PhoneNumber string `json:"phone_number" graphql:"phone_number"`
-	DisplayName string `json:"display_name" graphql:"display_name"`
-	Role        string `json:"role" graphql:"role"`
-	Verified    bool   `json:"verified" graphql:"verified"`
+	ID           string `json:"id" graphql:"id"`
+	Email        string `json:"email" graphql:"email"`
+	PhoneCode    int    `json:"phone_code" graphql:"phone_code"`
+	PhoneNumber  string `json:"phone_number" graphql:"phone_number"`
+	DisplayName  string `json:"display_name" graphql:"display_name"`
+	Role         string `json:"role" graphql:"role"`
+	Verified     bool   `json:"verified" graphql:"verified"`
+	EmailEnabled bool   `json:"email_enabled" graphql:"email_enabled"`
+	PhoneEnabled bool   `json:"phone_enabled" graphql:"phone_enabled"`
 }
 
 type Account struct {
@@ -173,6 +249,7 @@ type AccessToken struct {
 type AuthProvider interface {
 	GetName() AuthProviderType
 	CreateUser(*CreateAccountInput) (*Account, error)
+	PromoteAnonymousUser(string, *CreateAccountInput) (*Account, error)
 	GetOrCreateUserByPhone(*CreateAccountInput) (*Account, error)
 	UpdateUser(string, UpdateAccountInput) (*Account, error)
 	DeleteUser(id string) error
