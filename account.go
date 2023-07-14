@@ -39,12 +39,13 @@ type AccountManagerConfig struct {
 
 // AccountManager account business method
 type AccountManager struct {
-	providers       map[AuthProviderType]AuthProvider
-	gqlClient       *gql.Client
-	providerType    AuthProviderType
-	defaultRole     string
-	createFromToken bool
-	otp             AuthOTPConfig
+	providers            map[AuthProviderType]AuthProvider
+	gqlClient            *gql.Client
+	providerType         AuthProviderType
+	defaultRole          string
+	createFromToken      bool
+	otp                  AuthOTPConfig
+	defaultRoleAnonymous string
 }
 
 // NewAccountManager create new AccountManager instance
@@ -80,12 +81,13 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 	}
 
 	return &AccountManager{
-		providers:       providers,
-		gqlClient:       config.GQLClient,
-		providerType:    config.DefaultProvider,
-		defaultRole:     config.DefaultRole,
-		createFromToken: config.CreateFromToken,
-		otp:             config.OTP,
+		providers:            providers,
+		gqlClient:            config.GQLClient,
+		providerType:         config.DefaultProvider,
+		defaultRole:          config.DefaultRole,
+		createFromToken:      config.CreateFromToken,
+		otp:                  config.OTP,
+		defaultRoleAnonymous: config.DefaultRoleAnonymous,
 	}, nil
 }
 
@@ -1413,7 +1415,7 @@ func (am *AccountManager) PromoteAnonymousUser(accountID string, input *CreateAc
 
 	u := query.Accounts[0]
 
-	if u.Role != am.defaultRole {
+	if u.Role != am.defaultRoleAnonymous {
 		return nil, errors.New(ErrCodeAccountNotAnonymous)
 	}
 
