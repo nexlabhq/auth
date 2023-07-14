@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"log"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/auth"
@@ -369,6 +370,8 @@ func (fa *FirebaseAuth) PromoteAnonymousUser(uid string, input *CreateAccountInp
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("provider: %+v", user.ProviderUserInfo)
 
 	if len(user.ProviderUserInfo) > 0 || user.Email != "" {
 		return nil, errors.New(ErrCodeAccountNotAnonymous)
