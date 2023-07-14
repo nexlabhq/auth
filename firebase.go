@@ -357,6 +357,9 @@ func (fa *FirebaseAuth) UpdateUser(uid string, input UpdateAccountInput) (*Accou
 
 // PromoteAnonymousUser promotes the current anonymous user to the default user role
 func (fa *FirebaseAuth) PromoteAnonymousUser(uid string, input *CreateAccountInput) (*Account, error) {
+	if uid == "" {
+		return fa.CreateUser(input)
+	}
 	ctx := context.Background()
 	authClient, err := fa.App.Auth(ctx)
 	if err != nil {

@@ -1375,23 +1375,28 @@ func (am *AccountManager) Verify2FaOTP(sessionVariables map[string]string, accou
 }
 
 // PromoteAnonymousUser promotes the current anonymous user to the default user role
-func (am *AccountManager) PromoteAnonymousUser(providerUserID string, input *CreateAccountInput) (*Account, error) {
+func (am *AccountManager) PromoteAnonymousUser(accountID string, input *CreateAccountInput) (*Account, error) {
 
-	if providerUserID == "" {
+	if accountID == "" {
 		return nil, errors.New(ErrCodeAccountNotFound)
 	}
 
 	var query struct {
-		Accounts []Account `graphql:"account(where: $where, limit: 1)"`
+		Accounts []struct {
+			BaseAccount
+			AccountProviders []AccountProvider `graphql:"account_providers(where: providerWhere)"`
+		} `graphql:"account(where: $where, limit: 1)"`
 	}
 
 	variables := map[string]interface{}{
 		"where": account_bool_exp{
-			"account_providers": map[string]any{
-				"provider_user_id": map[string]any{
-					"_eq": providerUserID,
-				},
-				"provider_name": am.providerType,
+			"id": map[string]any{
+				"_eq": accountID,
+			},
+		},
+		"providerWhere": account_provider_bool_exp{
+			"provider_name": map[string]any{
+				"_eq": am.providerType,
 			},
 		},
 	}
@@ -1412,6 +1417,11 @@ func (am *AccountManager) PromoteAnonymousUser(providerUserID string, input *Cre
 		return nil, errors.New(ErrCodeAccountNotAnonymous)
 	}
 
+	providerUserID := ""
+	if len(u.AccountProviders) > 0 {
+		providerUserID = u.AccountProviders[0].ProviderUserID
+	}
+	input.ID = &u.ID
 	account, err := am.getCurrentProvider().PromoteAnonymousUser(providerUserID, input)
 	if err != nil {
 		return nil, err

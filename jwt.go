@@ -579,7 +579,6 @@ func (ja *JWTAuth) PromoteAnonymousUser(providerID string, input *CreateAccountI
 		"checksum": genRandomString(ja.config.ChecksumLength),
 	}
 
-	input.ID = &providerID
 	baseAccount := input.ToBaseAccount()
 	return &Account{
 		BaseAccount: baseAccount,
@@ -587,7 +586,7 @@ func (ja *JWTAuth) PromoteAnonymousUser(providerID string, input *CreateAccountI
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
-				ProviderUserID: providerID,
+				ProviderUserID: *input.ID,
 				Metadata:       metadata,
 			},
 		},
