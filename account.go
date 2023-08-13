@@ -298,9 +298,9 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 		"id":            acc.ID,
 		"display_name":  input.DisplayName,
 		"role":          input.Role,
-		"verified":      input.Verified,
-		"email_enabled": input.EmailEnabled,
-		"phone_enabled": input.PhoneEnabled,
+		"verified":      isTrue(input.Verified),
+		"email_enabled": isTrue(input.EmailEnabled),
+		"phone_enabled": isTrue(input.PhoneEnabled),
 		"account_providers": map[string]interface{}{
 			"data": acc.AccountProviders,
 		},
@@ -624,87 +624,6 @@ func (am *AccountManager) ChangeAllProvidersPassword(providers []AccountProvider
 		}
 	}
 	return nil
-}
-
-// DeleteUser delete user by identity
-func (am *AccountManager) DeleteUser(id string) error {
-	var query struct {
-		AccountProviders []AccountProvider `graphql:"account_provider(where: $where)"`
-	}
-
-	queryVariables := map[string]interface{}{
-		"where": account_provider_bool_exp{
-			"account_id": map[string]string{
-				"_eq": id,
-			},
-		},
-	}
-
-	err := am.gqlClient.Query(context.Background(), &query, queryVariables, gql.OperationName("GetAccountWithProvider"))
-
-	if err != nil {
-		return err
-	}
-
-	// delete user from authentication providers
-	for _, ap := range query.AccountProviders {
-		err = am.As(AuthProviderType(ap.Name)).getCurrentProvider().DeleteUser(ap.ProviderUserID)
-		if err != nil {
-			return err
-		}
-	}
-
-	var deleteMutation struct {
-		DeleteAccount struct {
-			AffectedRows int `graphql:"affected_rows"`
-		} `graphql:"delete_account(where: $where)"`
-	}
-
-	deleteVariables := map[string]interface{}{
-		"where": account_bool_exp{
-			"id": map[string]string{
-				"_eq": id,
-			},
-		},
-	}
-
-	return am.gqlClient.Mutate(context.Background(), &deleteMutation, deleteVariables, gql.OperationName("DeleteAccountById"))
-
-}
-
-// DeleteUsers delete many users by condition
-func (am *AccountManager) DeleteUsers(where map[string]interface{}) error {
-	var query struct {
-		Accounts []Account `graphql:"account(where: $where)"`
-	}
-
-	queryVariables := map[string]interface{}{
-		"where": account_bool_exp(where),
-	}
-
-	err := am.gqlClient.Query(context.Background(), &query, queryVariables, gql.OperationName("GetAccountsWithProvider"))
-
-	if err != nil {
-		return err
-	}
-
-	// delete user from authentication providers
-	for _, acc := range query.Accounts {
-		for _, ap := range acc.AccountProviders {
-			err = am.As(AuthProviderType(ap.Name)).getCurrentProvider().DeleteUser(ap.ProviderUserID)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	var deleteMutation struct {
-		DeleteAccount struct {
-			AffectedRows int `graphql:"affected_rows"`
-		} `graphql:"delete_account(where: $where)"`
-	}
-
-	return am.gqlClient.Mutate(context.Background(), &deleteMutation, queryVariables, gql.OperationName("DeleteAccountById"))
 }
 
 // GenerateOTP check if the account exists and generate the authentication otp
@@ -1475,4 +1394,83 @@ func (am *AccountManager) PromoteAnonymousUser(accountID string, input *CreateAc
 		BaseAccount:      baseAccount,
 		AccountProviders: []AccountProvider{provider},
 	}, nil
+}
+
+// DeleteUser delete user by id
+func (am *AccountManager) DeleteUser(id string, softDelete bool) error {
+	where := map[string]any{
+		"id": map[string]any{
+			"_eq": id,
+		},
+	}
+
+	if !softDelete {
+		_, err := am.deleteAccount(context.TODO(), where)
+
+		return err
+	}
+
+	_, err := am.softDeleteAccounts(context.TODO(), where, map[string]any{
+		"account_id": map[string]any{
+			"_eq": id,
+		},
+	})
+
+	return err
+}
+
+// DeleteUsers delete accounts from database
+// if softDelete mode is enabled, disable the account and remove auth providers
+func (am *AccountManager) DeleteUsers(where map[string]any, softDelete bool) (int, error) {
+
+	if !softDelete {
+		return am.deleteAccount(context.TODO(), where)
+	}
+
+	providerWhere := map[string]any{
+		"account": where,
+	}
+	return am.softDeleteAccounts(context.TODO(), where, providerWhere)
+}
+
+func (am *AccountManager) deleteAccount(ctx context.Context, where map[string]any) (int, error) {
+	var deleteMutation struct {
+		DeleteAccounts struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"delete_account(where: $where)"`
+	}
+
+	deleteVariables := map[string]any{
+		"where": account_bool_exp(where),
+	}
+
+	err := am.gqlClient.Mutate(context.TODO(), &deleteMutation, deleteVariables, graphql.OperationName("DeleteAccounts"))
+	return deleteMutation.DeleteAccounts.AffectedRows, err
+}
+
+func (am *AccountManager) softDeleteAccounts(ctx context.Context, where map[string]any, providerWhere map[string]any) (int, error) {
+
+	var deleteMutation struct {
+		UpdateAccounts struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"update_account(where: $where, _set: $_set)"`
+		DeleteAccountProviders struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"delete_account_provider(where: $providerWhere)"`
+	}
+
+	variables := map[string]any{
+		"where":         account_bool_exp(where),
+		"providerWhere": account_provider_bool_exp(providerWhere),
+		"_set": map[string]any{
+			"verified":      false,
+			"email_enabled": false,
+			"phone_enabled": false,
+			"disabled":      true,
+		},
+	}
+
+	err := am.gqlClient.Mutate(ctx, &deleteMutation, variables, graphql.OperationName("SoftDeleteAccounts"))
+
+	return deleteMutation.UpdateAccounts.AffectedRows, err
 }
