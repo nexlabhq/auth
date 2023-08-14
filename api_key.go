@@ -17,6 +17,9 @@ type APIKey struct {
 	AllowedIPs  []string  `graphql:"allowed_ips"`
 	ExpiredAt   time.Time `graphql:"expired_at"`
 	HasuraRoles []string  `graphql:"hasura_roles"`
+	Permissions []struct {
+		PermissionID string `graphql:"permission_id"`
+	} `graphql:"permissions"`
 }
 
 type api_key_bool_exp map[string]interface{}
