@@ -11,7 +11,7 @@ import (
 )
 
 type APIKey struct {
-	ID           int       `graphql:"id"`
+	ID           string    `graphql:"id"`
 	Type         string    `graphql:"type"`
 	AllowedFQDN  []string  `graphql:"allowed_fqdn"`
 	AllowedIPs   []string  `graphql:"allowed_ips"`
