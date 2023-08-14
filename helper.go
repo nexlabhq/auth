@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,10 @@ const (
 	digits        = "0123456789"
 	alphabets     = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	alphaDigits   = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+)
+
+var (
+	webBrowserRegex = regexp.MustCompile(`(?i)(opera|chrome|safari|firefox|msie|trident)[/\s]([\d.]+)`)
 )
 
 var src = rand.NewSource(time.Now().UnixNano())
@@ -58,13 +63,23 @@ func genID() string {
 		genRandomString(8)
 }
 
-// getRequestHost gets a requests host by reading off the forwarded-host
-// header (for proxies) and falls back to use the remote address.
-func getRequestHost(r http.Header) (string, string) {
-	host := r.Get("X-Forwarded-Host")
-	port := r.Get("X-Forwarded-Port")
+// isWebBrowserAgent checks if the user agent is from web browser
+func isWebBrowserAgent(userAgent string) bool {
+	if userAgent == "" {
+		return false
+	}
 
-	return host, port
+	return webBrowserRegex.MatchString(userAgent)
+}
+
+// getRequestOrigin get request origin from origin or x-forwarded-origin header
+func getRequestOrigin(header http.Header) string {
+	origin := header.Get("Origin")
+	if origin != "" {
+		return origin
+	}
+
+	return header.Get("X-Forwarded-Origin")
 }
 
 // getRequestIP gets a requests IP address by reading off the forwarded-for
