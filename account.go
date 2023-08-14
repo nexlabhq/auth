@@ -423,8 +423,15 @@ func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interf
 	}
 
 	acc, err := am.findAccountByProviderUser(provider.ProviderUserID)
-	if err != nil || acc != nil {
-		return acc, claims, err
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if acc != nil {
+		if acc.Disabled {
+			return nil, nil, errors.New(ErrCodeAccountDisabled)
+		}
+		return acc, claims, nil
 	}
 
 	if !am.createFromToken {

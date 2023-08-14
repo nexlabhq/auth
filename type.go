@@ -230,6 +230,7 @@ type BaseAccount struct {
 	Verified     bool   `json:"verified" graphql:"verified"`
 	EmailEnabled bool   `json:"email_enabled" graphql:"email_enabled"`
 	PhoneEnabled bool   `json:"phone_enabled" graphql:"phone_enabled"`
+	Disabled     bool   `json:"disabled" graphql:"disabled"`
 }
 
 type Account struct {
