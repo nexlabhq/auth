@@ -24,18 +24,18 @@ type APIKey struct {
 
 type api_key_bool_exp map[string]interface{}
 
-// apiKeyAuth represents api key authentication
-type apiKeyAuth struct {
+// ApiKeyAuth represents the api key authentication service
+type ApiKeyAuth struct {
 	client *gql.Client
 }
 
 // NewAPIKeyAuth create new APIKeyAuth instance
-func NewAPIKeyAuth(client *gql.Client) *apiKeyAuth {
-	return &apiKeyAuth{client}
+func NewAPIKeyAuth(client *gql.Client) *ApiKeyAuth {
+	return &ApiKeyAuth{client}
 }
 
 // Verify and validate the api key
-func (ak *apiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error) {
+func (ak *ApiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error) {
 
 	// get either api key header or web domain to authorize the application
 	var andWhere []map[string]any
@@ -91,7 +91,7 @@ func (ak *apiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error
 	return &apiK, nil
 }
 
-func (ak *apiKeyAuth) validate(apiK *APIKey, headers http.Header, origin string) error {
+func (ak *ApiKeyAuth) validate(apiK *APIKey, headers http.Header, origin string) error {
 
 	if !apiK.ExpiredAt.IsZero() && apiK.ExpiredAt.Before(time.Now()) {
 		return errors.New(ErrCodeAPIKeyExpired)
