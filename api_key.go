@@ -11,15 +11,13 @@ import (
 )
 
 type APIKey struct {
-	ID          int       `graphql:"id"`
-	Type        string    `graphql:"type"`
-	AllowedFQDN []string  `graphql:"allowed_fqdn"`
-	AllowedIPs  []string  `graphql:"allowed_ips"`
-	ExpiredAt   time.Time `graphql:"expired_at"`
-	HasuraRoles []string  `graphql:"hasura_roles"`
-	Permissions []struct {
-		PermissionID string `graphql:"permission_id"`
-	} `graphql:"permissions"`
+	ID           int       `graphql:"id"`
+	Type         string    `graphql:"type"`
+	AllowedFQDN  []string  `graphql:"allowed_fqdn"`
+	AllowedIPs   []string  `graphql:"allowed_ips"`
+	ExpiredAt    time.Time `graphql:"expired_at"`
+	HasuraRoles  []string  `graphql:"hasura_roles"`
+	PermissionID string    `graphql:"permission_id"`
 }
 
 type api_key_bool_exp map[string]interface{}
