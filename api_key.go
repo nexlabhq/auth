@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -10,14 +9,26 @@ import (
 	gql "github.com/hasura/go-graphql-client"
 )
 
+// APIKeyGetter abstracts an API key model with getter
+type APIKeysGetter interface {
+	Get() []APIKey
+}
+
+// APIKey represents an API key model
 type APIKey struct {
-	ID           string    `graphql:"id"`
-	Type         string    `graphql:"type"`
-	AllowedFQDN  []string  `graphql:"allowed_fqdn"`
-	AllowedIPs   []string  `graphql:"allowed_ips"`
-	ExpiredAt    time.Time `graphql:"expired_at"`
-	HasuraRoles  []string  `graphql:"hasura_roles"`
-	PermissionID string    `graphql:"permission_id"`
+	ID           string    `graphql:"id" json:"id"`
+	Type         string    `graphql:"type" json:"type"`
+	AllowedFQDN  []string  `graphql:"allowed_fqdn" json:"allowed_fqdn"`
+	AllowedIPs   []string  `graphql:"allowed_ips" json:"allowed_ips"`
+	ExpiredAt    time.Time `graphql:"expired_at" json:"expired_at"`
+	HasuraRoles  []string  `graphql:"hasura_roles" json:"hasura_roles"`
+	PermissionID string    `graphql:"permission_id" json:"permission_id"`
+}
+
+type APIKeys []APIKey
+
+func (ak APIKeys) Get() []APIKey {
+	return ak
 }
 
 type api_key_bool_exp map[string]interface{}
@@ -34,6 +45,12 @@ func NewAPIKeyAuth(client *gql.Client) *ApiKeyAuth {
 
 // Verify and validate the api key
 func (ak *ApiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error) {
+	keys := APIKeys{}
+	return ak.VerifyCustomKey(&keys, apiKey, headers)
+}
+
+// VerifyCustomKey verifies a custom API key model
+func (ak *ApiKeyAuth) VerifyCustomKey(input APIKeysGetter, apiKey string, headers http.Header) (*APIKey, error) {
 
 	// get either api key header or web domain to authorize the application
 	var andWhere []map[string]any
@@ -62,31 +79,25 @@ func (ak *ApiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error
 		return nil, errors.New(ErrCodeAPIKeyRequired)
 	}
 
-	var query struct {
-		APIKeys []APIKey `graphql:"api_key(where: $where, limit: 1)"`
-	}
-
-	variables := map[string]interface{}{
-		"where": api_key_bool_exp{
+	builder := gql.NewBuilder().Bind("api_key(where: $where, limit: 1)", input).
+		Variable("where", api_key_bool_exp{
 			"_and": andWhere,
-		},
-	}
+		})
 
-	err := ak.client.Query(context.Background(), &query, variables, gql.OperationName("GetAPIKey"))
-
+	err := builder.Query(ak.client, gql.OperationName("GetAPIKey"))
 	if err != nil {
 		return nil, err
 	}
 
-	if len(query.APIKeys) == 0 {
+	keys := input.Get()
+	if len(keys) == 0 {
 		return nil, errors.New(ErrCodeAPIKeyNotFound)
 	}
 
-	apiK := query.APIKeys[0]
-	if err = ak.validate(&apiK, headers, origin); err != nil {
+	if err = ak.validate(&keys[0], headers, origin); err != nil {
 		return nil, err
 	}
-	return &apiK, nil
+	return &keys[0], nil
 }
 
 func (ak *ApiKeyAuth) validate(apiK *APIKey, headers http.Header, origin string) error {

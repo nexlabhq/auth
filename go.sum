@@ -110,6 +110,10 @@ github.com/graph-gophers/graphql-transport-ws v0.0.2 h1:DbmSkbIGzj8SvHei6n8Mh9eL
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
 github.com/hasura/go-graphql-client v0.10.0 h1:eQm/ap/rqxMG6yAGe6J+FkXu1VqJ9p21E63vz0A7zLQ=
 github.com/hasura/go-graphql-client v0.10.0/go.mod h1:z9UPkMmCBMuJjvBEtdE6F+oTR2r15AcjirVNq/8P+Ig=
+github.com/hasura/go-graphql-client v0.10.1-0.20230813073105-5c080fef5b2b h1:OPYDRUDhleCgunm0s1omaYIilbDK//4VXClM1jBCS8U=
+github.com/hasura/go-graphql-client v0.10.1-0.20230813073105-5c080fef5b2b/go.mod h1:z9UPkMmCBMuJjvBEtdE6F+oTR2r15AcjirVNq/8P+Ig=
+github.com/hgiasac/graphql-utils v0.0.0-20230815180236-643f58bf1e9f h1:rlyq1HpGD2O9+9pXPovnXTG9Y+9R8IEXbfEYsjS5auQ=
+github.com/hgiasac/graphql-utils v0.0.0-20230815180236-643f58bf1e9f/go.mod h1:6NW8ZIqjJ25RmD6O30odeHeZENqHDzrUgPWPXpaIzic=
 github.com/json-iterator/go v1.1.9 h1:9yzud/Ht36ygwatGx56VwCZtlI/2AD15T1X2sjSuGns=
 github.com/json-iterator/go v1.1.9/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
 github.com/klauspost/compress v1.10.3/go.mod h1:aoV0uJVorq1K+umq18yTdKaF57EivdYsUV+/s2qKfXs=

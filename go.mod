@@ -6,7 +6,7 @@ require (
 	firebase.google.com/go/v4 v4.12.0
 	github.com/dvsekhvalnov/jose2go v1.5.0
 	github.com/google/uuid v1.3.0
-	github.com/hasura/go-graphql-client v0.10.0
+	github.com/hasura/go-graphql-client v0.10.1-0.20230813073105-5c080fef5b2b
 	github.com/stretchr/testify v1.8.4
 	github.com/ttacon/libphonenumber v1.2.1
 	golang.org/x/crypto v0.12.0
@@ -30,6 +30,7 @@ require (
 	github.com/google/s2a-go v0.1.5 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.5 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
+	github.com/hgiasac/graphql-utils v0.0.0-20230815180236-643f58bf1e9f // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/ttacon/builder v0.0.0-20170518171403-c099f663e1c2 // indirect

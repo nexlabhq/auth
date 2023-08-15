@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hasura/go-graphql-client"
+	"github.com/hgiasac/graphql-utils/test"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -123,5 +125,51 @@ func TestAPIKeyValidate(t *testing.T) {
 		},
 	} {
 		assert.Equal(t, ft.Error, keyAuth.validate(ft.APIKey, ft.Headers, getRequestOrigin(ft.Headers)), "%d", i)
+	}
+}
+
+func TestApiKey_Verify(t *testing.T) {
+	fixtures := []struct {
+		client   *graphql.Client
+		inputKey string
+		header   http.Header
+		expected *APIKey
+		errorMsg string
+	}{
+		{
+			client: test.NewMockGraphQLClientSingle(map[string]any{
+				"api_key": []APIKey{
+					{
+						ID:           "1",
+						Type:         "app",
+						AllowedFQDN:  []string{"example.com"},
+						HasuraRoles:  []string{"admin"},
+						PermissionID: "*",
+					},
+				},
+			}, nil),
+			inputKey: "key",
+			header: http.Header{
+				"Origin": []string{"example.com"},
+			},
+			expected: &APIKey{
+				ID:           "1",
+				Type:         "app",
+				AllowedFQDN:  []string{"example.com"},
+				HasuraRoles:  []string{"admin"},
+				PermissionID: "*",
+			},
+		},
+	}
+
+	for i, fixture := range fixtures {
+		client := NewAPIKeyAuth(fixture.client)
+		result, err := client.Verify(fixture.inputKey, fixture.header)
+		if fixture.errorMsg != "" {
+			assert.EqualError(t, err, fixture.errorMsg, "%d", i)
+		} else {
+			assert.NoError(t, err, "%d", i)
+			assert.Equal(t, *fixture.expected, *result, "%d", i)
+		}
 	}
 }
