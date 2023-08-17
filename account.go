@@ -492,13 +492,28 @@ func (am *AccountManager) findAccountByProviderUser(userId string, accountBoolEx
 		} `graphql:"account_provider(where: $where, limit: 1)"`
 	}
 
+	providerOrConditions := []map[string]any{
+		{
+			"provider_user_id": map[string]string{
+				"_eq": userId,
+			},
+			"provider_name": map[string]string{
+				"_eq": string(am.providerType),
+			},
+		},
+	}
+
+	// we may use custom firebase token with uid = account_id
+	if am.providerType == AuthFirebase {
+		providerOrConditions = append(providerOrConditions, map[string]any{
+			"account_id": map[string]string{
+				"_eq": userId,
+			},
+		})
+	}
+
 	where := account_provider_bool_exp{
-		"provider_user_id": map[string]string{
-			"_eq": userId,
-		},
-		"provider_name": map[string]string{
-			"_eq": string(am.providerType),
-		},
+		"_or": providerOrConditions,
 	}
 
 	if len(accountBoolExp) > 0 {
