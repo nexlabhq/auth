@@ -301,10 +301,19 @@ type OTPOutput struct {
 	AccountID      string
 }
 
+// GenerateOTPInput represents the otp generation input
+type GenerateOTPInput struct {
+	PhoneCode       int
+	PhoneNumber     string
+	ExtraConditions map[string]any
+	ExtraInputs     map[string]any
+}
+
 // VerifyOTPInput represents the otp verification input
 type VerifyOTPInput struct {
-	PhoneCode   int         `json:"phone_code"`
-	PhoneNumber string      `json:"phone_number"`
-	OTP         string      `json:"otp"`
-	Scopes      []AuthScope `json:"scopes"`
+	PhoneCode       int            `json:"phone_code"`
+	PhoneNumber     string         `json:"phone_number"`
+	OTP             string         `json:"otp"`
+	Scopes          []AuthScope    `json:"scopes"`
+	ExtraConditions map[string]any `json:"-"`
 }

@@ -186,3 +186,21 @@ func sliceIndex[E comparable](s []E, v E) int {
 func sliceContains[E comparable](s []E, v E) bool {
 	return sliceIndex(s, v) >= 0
 }
+
+// mergeMap merge values of maps
+func mergeMap[K comparable, V any](src map[K]V, dest map[K]V, extras ...map[K]V) map[K]V {
+	if src == nil {
+		src = make(map[K]V)
+	}
+	for k, v := range dest {
+		src[k] = v
+	}
+	if len(extras) > 0 {
+		for _, extra := range extras {
+			for k, v := range extra {
+				src[k] = v
+			}
+		}
+	}
+	return src
+}
