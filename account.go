@@ -215,7 +215,7 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 
 	ctx := context.Background()
 
-	if (isTrue(input.EmailEnabled) || (isTrue(input.EmailEnabled) && !isTrue(input.PhoneEnabled))) &&
+	if (isTrue(input.EmailEnabled) || (!isTrue(input.EmailEnabled) && !isTrue(input.PhoneEnabled))) &&
 		isStringPtrEmpty(input.Email) {
 		return nil, errors.New(ErrCodeEmailRequired)
 	}

@@ -80,18 +80,19 @@ func (ja JWTAuth) GetName() AuthProviderType {
 }
 
 func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
-	if isStringPtrEmpty(input.Password) {
-		return nil, errors.New(ErrCodePasswordRequired)
-	}
-
+	var sHashPassword string
 	if isStringPtrEmpty(input.ID) {
 		id := genID()
 		input.ID = &id
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*input.Password), ja.config.Cost)
-	if err != nil {
-		return nil, err
+	if !isStringPtrEmpty(input.Password) {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*input.Password), ja.config.Cost)
+		if err != nil {
+			return nil, err
+		}
+
+		sHashPassword = string(hashedPassword)
 	}
 
 	metadata := map[string]interface{}{
@@ -99,7 +100,7 @@ func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
 	}
 	return &Account{
 		BaseAccount: input.ToBaseAccount(),
-		Password:    string(hashedPassword),
+		Password:    sHashPassword,
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
