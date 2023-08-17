@@ -133,7 +133,7 @@ func (am *AccountManager) ChangeProviderPassword(uid string, newPassword string)
 }
 
 // FindAccountByProviderEmail find account by email
-func (am *AccountManager) FindAccountByProviderEmail(email string) (*Account, error) {
+func (am *AccountManager) FindAccountByProviderEmail(email string, accountBoolExp map[string]any) (*Account, error) {
 
 	u, err := am.getCurrentProvider().GetUserByEmail(email)
 	if err != nil {
@@ -146,7 +146,7 @@ func (am *AccountManager) FindAccountByProviderEmail(email string) (*Account, er
 		return u, nil
 	}
 
-	acc, err := am.findAccountByProviderUser(u.AccountProviders[0].ProviderUserID)
+	acc, err := am.findAccountByProviderUser(u.AccountProviders[0].ProviderUserID, accountBoolExp)
 	if err != nil || acc != nil {
 		return acc, err
 	}
@@ -416,13 +416,13 @@ func (am *AccountManager) CreateProvider(input AccountProvider) error {
 }
 
 // VerifyToken validate and return provider user id
-func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interface{}, error) {
+func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]any) (*Account, map[string]interface{}, error) {
 	provider, claims, err := am.getCurrentProvider().VerifyToken(token)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	acc, err := am.findAccountByProviderUser(provider.ProviderUserID)
+	acc, err := am.findAccountByProviderUser(provider.ProviderUserID, accountBoolExp)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -484,7 +484,7 @@ func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interf
 	return acc, claims, nil
 }
 
-func (am *AccountManager) findAccountByProviderUser(userId string) (*Account, error) {
+func (am *AccountManager) findAccountByProviderUser(userId string, accountBoolExp map[string]any) (*Account, error) {
 	// Get user by provider
 	var query struct {
 		AccountProviders []struct {
@@ -492,15 +492,21 @@ func (am *AccountManager) findAccountByProviderUser(userId string) (*Account, er
 		} `graphql:"account_provider(where: $where, limit: 1)"`
 	}
 
-	variables := map[string]interface{}{
-		"where": account_provider_bool_exp{
-			"provider_user_id": map[string]string{
-				"_eq": userId,
-			},
-			"provider_name": map[string]string{
-				"_eq": string(am.providerType),
-			},
+	where := account_provider_bool_exp{
+		"provider_user_id": map[string]string{
+			"_eq": userId,
 		},
+		"provider_name": map[string]string{
+			"_eq": string(am.providerType),
+		},
+	}
+
+	if len(accountBoolExp) > 0 {
+		where["account"] = accountBoolExp
+	}
+
+	variables := map[string]interface{}{
+		"where": where,
 	}
 
 	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountProvider"))

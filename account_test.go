@@ -49,11 +49,11 @@ func deleteUserByEmail(am *AccountManager, email string) error {
 		return nil
 	}
 
-	return am.DeleteUser(user.ID)
+	return am.DeleteUser(user.ID, false)
 }
 
 func account_cleanup(t *testing.T, am *AccountManager) {
-	err := am.DeleteUsers(map[string]interface{}{})
+	_, err := am.DeleteUsers(map[string]interface{}{}, true)
 	assert.NoError(t, err)
 }
 
@@ -94,7 +94,7 @@ func TestJWTAuthProvider(t *testing.T) {
 	}, nil)
 	assert.NoError(t, err)
 
-	acc1, claims1, err := manager.VerifyToken(token1.AccessToken)
+	acc1, claims1, err := manager.VerifyToken(token1.AccessToken, nil)
 	assert.Error(t, err)
 	assert.Nil(t, acc1)
 	assert.Nil(t, claims1)
@@ -121,9 +121,9 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	assert.Nil(t, err)
 
 	user, err := manager.CreateAccountWithProvider(&CreateAccountInput{
-		Email:    email,
-		Password: password,
-		Verified: true,
+		Email:    &email,
+		Password: &password,
+		Verified: getPtr(true),
 	}, nil)
 	assert.Nil(t, err)
 	assert.NotNil(t, user)
@@ -132,7 +132,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 		"foo": "bar",
 	}
 	doVerify := func(token string) {
-		acc, claims, err := manager.VerifyToken(token)
+		acc, claims, err := manager.VerifyToken(token, nil)
 		assert.Nil(t, err)
 
 		assert.Equal(t, user.ID, acc.ID)
@@ -147,7 +147,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	// test token expired
 	time.Sleep(3 * time.Second)
 
-	_, _, err = manager.VerifyToken(token1.AccessToken)
+	_, _, err = manager.VerifyToken(token1.AccessToken, nil)
 	assert.EqualError(t, err, ErrCodeTokenExpired)
 
 	newToken1, err := manager.RefreshToken(token1.RefreshToken, NewTokenClaims(testClaims))
@@ -158,7 +158,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	err = manager.ChangePassword(user.ID, password, newPassword, false)
 	assert.Nil(t, err)
 
-	_, _, err = manager.VerifyToken(newToken1.AccessToken)
+	_, _, err = manager.VerifyToken(newToken1.AccessToken, nil)
 	assert.EqualError(t, err, ErrCodeTokenExpired)
 
 	userAfterChanged, err := manager.FindAccountByID(user.ID)
@@ -193,23 +193,23 @@ func TestFirebaseAuthProvider(t *testing.T) {
 		err = provider.DeleteUser(user1.AccountProviders[0].ProviderUserID)
 		assert.NoError(t, err)
 
-		u, err := manager.findAccountByProviderUser(user1.AccountProviders[0].ProviderUserID)
+		u, err := manager.findAccountByProviderUser(user1.AccountProviders[0].ProviderUserID, nil)
 		assert.NoError(t, err)
 
 		if u != nil {
-			err = manager.DeleteUser(u.ID)
+			err = manager.DeleteUser(u.ID, false)
 			assert.NoError(t, err)
 		}
 	}
 
 	user1, err = provider.CreateUser(&CreateAccountInput{
-		DisplayName:  "Jon Snow",
-		Email:        email,
-		EmailEnabled: true,
-		PhoneEnabled: true,
-		PhoneCode:    84,
-		PhoneNumber:  "0123456789",
-		Password:     "random_password",
+		DisplayName:  getPtr("Jon Snow"),
+		Email:        &email,
+		EmailEnabled: getPtr(true),
+		PhoneEnabled: getPtr(true),
+		PhoneCode:    getPtr(84),
+		PhoneNumber:  getPtr("0123456789"),
+		Password:     getPtr("random_password"),
 	})
 	assert.NoError(t, err)
 
@@ -234,7 +234,7 @@ func TestFirebaseAuthProvider(t *testing.T) {
 	assert.Equal(t, acc1.PhoneNumber, acc1g.PhoneNumber)
 	assert.Equal(t, "user", acc1g.Role)
 
-	err = manager.DeleteUser(acc1.ID)
+	err = manager.DeleteUser(acc1.ID, false)
 	assert.NoError(t, err)
 }
 
