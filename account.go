@@ -489,7 +489,7 @@ func (am *AccountManager) findAccountByProviderUser(userId string, accountBoolEx
 	var query struct {
 		Account []struct {
 			BaseAccount
-			AccountProviders []AccountProvider `graphql:"account_provider(where: $providerWhere)"`
+			AccountProviders []AccountProvider `graphql:"account_providers(where: $providerWhere)"`
 		} `graphql:"account(where: $where, limit: 1)"`
 	}
 
