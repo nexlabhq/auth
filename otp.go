@@ -169,20 +169,20 @@ func (am *AccountManager) GenerateOTP(sessionVariables map[string]string, input 
 }
 
 // VerifyOTP verify if the otp code matches the current account
-func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input VerifyOTPInput, options ...AccessTokenOption) (*Account, *AccessToken, error) {
+func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input VerifyOTPInput) (*Account, error) {
 
 	if !am.otp.Enabled {
-		return nil, nil, errors.New(ErrCodeUnsupported)
+		return nil, errors.New(ErrCodeUnsupported)
 	}
 
 	if input.PhoneNumber == "" {
-		return nil, nil, errors.New(ErrCodePhoneRequired)
+		return nil, errors.New(ErrCodePhoneRequired)
 	}
 
 	var err error
 	phoneCode, phoneNumber, err := parseI18nPhoneNumber(input.PhoneNumber, input.PhoneCode)
 	if err != nil {
-		return nil, nil, errors.New(ErrCodeInvalidPhone)
+		return nil, errors.New(ErrCodeInvalidPhone)
 	}
 
 	var accountQuery struct {
@@ -199,6 +199,10 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 		} `graphql:"account(where: $where, limit: 1)"`
 	}
 
+	providerNames := []AuthProviderType{am.GetProviderName()}
+	if am.GetProviderName() == AuthFirebase {
+		providerNames = append(providerNames, AuthJWT)
+	}
 	variables := map[string]any{
 		"where": account_bool_exp(mergeMap(map[string]any{
 			"phone_code": map[string]interface{}{
@@ -222,7 +226,7 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 		"activityLimit": graphql.Int(am.otp.LoginDisableLimit + 1),
 		"providerWhere": account_provider_bool_exp{
 			"provider_name": map[string]interface{}{
-				"_eq": am.GetProviderName(),
+				"_in": providerNames,
 			},
 		},
 	}
@@ -230,19 +234,19 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 	err = am.gqlClient.Query(context.TODO(), &accountQuery, variables, graphql.OperationName("FindAccountWithActivities"))
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	if len(accountQuery.Accounts) == 0 {
-		return nil, nil, errors.New(ErrCodeAccountNotFound)
+		return nil, errors.New(ErrCodeAccountNotFound)
 	}
 
 	if accountQuery.Accounts[0].Disabled {
-		return nil, nil, errors.New(ErrCodeAccountDisabled)
+		return nil, errors.New(ErrCodeAccountDisabled)
 	}
 
 	if len(accountQuery.Accounts[0].Activities) == 0 {
-		return nil, nil, errors.New(ErrCodeInvalidOTP)
+		return nil, errors.New(ErrCodeInvalidOTP)
 	}
 
 	account := accountQuery.Accounts[0]
@@ -278,7 +282,7 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 
 				_ = am.gqlClient.Mutate(context.TODO(), &updateAccountMutation, updateVariables, graphql.OperationName("UpdateAccount"))
 			}
-			return nil, nil, errors.New(ErrCodeInvalidOTP)
+			return nil, errors.New(ErrCodeInvalidOTP)
 		}
 	}
 
@@ -290,7 +294,7 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 			PhoneNumber: &input.PhoneNumber,
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		accProvider := AccountProvider{
@@ -301,7 +305,7 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 		}
 		err = am.CreateProvider(accProvider)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		account.AccountProviders = []AccountProvider{accProvider}
@@ -340,18 +344,13 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 
 	err = am.gqlClient.Mutate(context.TODO(), &updateAccountMutation, updateVariables, graphql.OperationName("UpdateAccount"))
 	if err != nil {
-		return nil, nil, err
-	}
-
-	token, err := am.EncodeToken(&account.AccountProviders[0], input.Scopes, options...)
-	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	return &Account{
 		BaseAccount:      account.BaseAccount,
-		AccountProviders: account.AccountProviders,
-	}, token, nil
+		AccountProviders: filterProvidersByType(account.AccountProviders, am.providerType),
+	}, nil
 }
 
 func (am *AccountManager) newOTPActivity(sessionVariables map[string]string, accountID string, activityType ActivityType) (account_activity_insert_input, string, time.Time) {

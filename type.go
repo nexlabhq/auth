@@ -314,6 +314,5 @@ type VerifyOTPInput struct {
 	PhoneCode       int            `json:"phone_code"`
 	PhoneNumber     string         `json:"phone_number"`
 	OTP             string         `json:"otp"`
-	Scopes          []AuthScope    `json:"scopes"`
 	ExtraConditions map[string]any `json:"-"`
 }

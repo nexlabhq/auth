@@ -487,9 +487,10 @@ func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]an
 func (am *AccountManager) findAccountByProviderUser(userId string, accountBoolExp map[string]any) (*Account, error) {
 	// Get user by provider
 	var query struct {
-		AccountProviders []struct {
-			Account BaseAccount `graphql:"account"`
-		} `graphql:"account_provider(where: $where, limit: 1)"`
+		Account []struct {
+			BaseAccount
+			AccountProviders []AccountProvider `graphql:"account_provider(where: $providerWhere)"`
+		} `graphql:"account(where: $where, limit: 1)"`
 	}
 
 	providerOrConditions := []map[string]any{
@@ -512,38 +513,33 @@ func (am *AccountManager) findAccountByProviderUser(userId string, accountBoolEx
 		})
 	}
 
-	where := account_provider_bool_exp{
-		"_or": providerOrConditions,
+	where := account_bool_exp{
+		"account_providers": map[string]any{
+			"_or": providerOrConditions,
+		},
 	}
 
-	if len(accountBoolExp) > 0 {
-		where["account"] = accountBoolExp
+	for k, exp := range accountBoolExp {
+		where[k] = exp
 	}
 
 	variables := map[string]interface{}{
 		"where": where,
 	}
 
-	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountProvider"))
+	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountByProvider"))
 	if err != nil {
 		return nil, err
 	}
 
-	if len(query.AccountProviders) > 0 {
-		accProvider := query.AccountProviders[0]
-		return &Account{
-			BaseAccount: accProvider.Account,
-			AccountProviders: []AccountProvider{
-				{
-					ProviderUserID: userId,
-					AccountID:      &accProvider.Account.ID,
-					Name:           string(am.providerType),
-				},
-			},
-		}, nil
+	if len(query.Account) == 0 {
+		return nil, nil
 	}
 
-	return nil, nil
+	return &Account{
+		BaseAccount:      query.Account[0].BaseAccount,
+		AccountProviders: filterProvidersByType(query.Account[0].AccountProviders, am.providerType),
+	}, nil
 }
 
 func (am *AccountManager) SignInWithEmailAndPassword(email string, password string) (*Account, error) {
@@ -1156,4 +1152,17 @@ func (am *AccountManager) softDeleteAccounts(ctx context.Context, where map[stri
 	err := am.gqlClient.Mutate(ctx, &deleteMutation, variables, graphql.OperationName("SoftDeleteAccounts"))
 
 	return deleteMutation.UpdateAccounts.AffectedRows, err
+}
+
+func filterProvidersByType(providers []AccountProvider, providerType AuthProviderType) []AccountProvider {
+	for _, provider := range providers {
+		if provider.Name == string(providerType) {
+			return []AccountProvider{provider}
+		}
+	}
+
+	if providerType == AuthFirebase {
+		return filterProvidersByType(providers, AuthJWT)
+	}
+	return []AccountProvider{}
 }
