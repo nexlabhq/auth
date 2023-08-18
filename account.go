@@ -525,6 +525,9 @@ func (am *AccountManager) findAccountByProviderUser(userId string, accountBoolEx
 
 	variables := map[string]interface{}{
 		"where": where,
+		"providerWhere": account_provider_bool_exp{
+			"_or": providerOrConditions,
+		},
 	}
 
 	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountByProvider"))
