@@ -46,6 +46,8 @@ const (
 	XHasuraRequestIP    = "x-hasura-request-ip"
 	XHasuraLatitude     = "x-hasura-latitude"
 	XHasuraLongitude    = "x-hasura-longitude"
+
+	OTPTestCodeName = "test_code"
 )
 
 const (
@@ -211,10 +213,10 @@ type account_activity_bool_exp map[string]interface{}
 type account_activity_insert_input map[string]interface{}
 
 type AccountProvider struct {
-	AccountID      *string                `json:"account_id,omitempty" graphql:"account_id"`
-	Name           string                 `json:"provider_name" graphql:"provider_name"`
-	ProviderUserID string                 `json:"provider_user_id" graphql:"provider_user_id"`
-	Metadata       map[string]interface{} `json:"metadata" graphql:"metadata" scalar:"true"`
+	AccountID      *string        `json:"account_id,omitempty" graphql:"account_id"`
+	Name           string         `json:"provider_name" graphql:"provider_name"`
+	ProviderUserID string         `json:"provider_user_id" graphql:"provider_user_id"`
+	Metadata       map[string]any `json:"metadata" graphql:"metadata" scalar:"true"`
 }
 
 type account_provider_insert_input AccountProvider

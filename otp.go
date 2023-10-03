@@ -250,8 +250,19 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 	}
 
 	account := accountQuery.Accounts[0]
+	var testAccountCode string
+	for _, provider := range account.AccountProviders {
+		if provider.Metadata != nil {
+			if anyCode, ok := provider.Metadata[OTPTestCodeName]; ok {
+				if code, ok := anyCode.(string); ok && code != "" {
+					testAccountCode = code
+				}
+			}
+		}
+	}
+
 	// static otp code check in dev mode
-	if !am.otp.DevMode || input.OTP != am.otp.DevOTPCode {
+	if !(am.otp.DevMode && input.OTP == am.otp.DevOTPCode) && !(testAccountCode != "" && input.OTP == testAccountCode) {
 		otpActivityIndex := -1
 		for i, activity := range account.Activities {
 			if activity.Type == ActivityLogin || activity.Type == ActivityLogout {
