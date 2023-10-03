@@ -241,15 +241,16 @@ func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input Ve
 		return nil, errors.New(ErrCodeAccountNotFound)
 	}
 
-	if accountQuery.Accounts[0].Disabled {
+	account := accountQuery.Accounts[0]
+
+	if account.Disabled {
 		return nil, errors.New(ErrCodeAccountDisabled)
 	}
 
-	if len(accountQuery.Accounts[0].Activities) == 0 {
+	if len(account.Activities) == 0 {
 		return nil, errors.New(ErrCodeInvalidOTP)
 	}
 
-	account := accountQuery.Accounts[0]
 	var testAccountCode string
 	for _, provider := range account.AccountProviders {
 		if provider.Metadata != nil {

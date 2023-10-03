@@ -416,7 +416,7 @@ func (am *AccountManager) CreateProvider(input AccountProvider) error {
 }
 
 // VerifyToken validate and return provider user id
-func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]any) (*Account, map[string]interface{}, error) {
+func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]any, extraFields map[string]any) (*Account, map[string]interface{}, error) {
 	provider, claims, err := am.getCurrentProvider().VerifyToken(token)
 	if err != nil {
 		return nil, nil, err
@@ -472,6 +472,12 @@ func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]an
 	if acc.PhoneNumber != "" {
 		accInsertInput["phone_code"] = acc.PhoneCode
 		accInsertInput["phone_number"] = acc.PhoneNumber
+	}
+
+	if len(extraFields) > 0 {
+		for k, v := range extraFields {
+			accInsertInput[k] = v
+		}
 	}
 
 	_, err = am.InsertAccount(accInsertInput)
