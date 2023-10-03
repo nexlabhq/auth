@@ -1,89 +1,113 @@
 package auth
 
 import (
-	"context"
 	"errors"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	gql "github.com/hasura/go-graphql-client"
 )
 
+// APIKeyGetter abstracts an API key model with getter
+type APIKeysGetter interface {
+	Get() []APIKey
+}
+
+// APIKey represents an API key model
 type APIKey struct {
-	ID          int       `graphql:"id"`
-	Type        string    `graphql:"type"`
-	AllowedFQDN string    `graphql:"allowed_fqdn"`
-	AllowedIPs  []string  `graphql:"allowed_ips"`
-	ExpiredAt   time.Time `graphql:"expired_at"`
+	ID           string    `graphql:"id" json:"id"`
+	Type         string    `graphql:"type" json:"type"`
+	AllowedFQDN  []string  `graphql:"allowed_fqdn" json:"allowed_fqdn"`
+	AllowedIPs   []string  `graphql:"allowed_ips" json:"allowed_ips"`
+	ExpiredAt    time.Time `graphql:"expired_at" json:"expired_at"`
+	HasuraRoles  []string  `graphql:"hasura_roles" json:"hasura_roles"`
+	PermissionID string    `graphql:"permission_id" json:"permission_id"`
+}
+
+type APIKeys []APIKey
+
+func (ak APIKeys) Get() []APIKey {
+	return ak
 }
 
 type api_key_bool_exp map[string]interface{}
 
-// apiKeyAuth represents api key authentication
-type apiKeyAuth struct {
+// ApiKeyAuth represents the api key authentication service
+type ApiKeyAuth struct {
 	client *gql.Client
 }
 
 // NewAPIKeyAuth create new APIKeyAuth instance
-func NewAPIKeyAuth(client *gql.Client) *apiKeyAuth {
-	return &apiKeyAuth{client}
+func NewAPIKeyAuth(client *gql.Client) *ApiKeyAuth {
+	return &ApiKeyAuth{client}
 }
 
-// Verify verify and validate the api key
-func (ak *apiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error) {
+// Verify and validate the api key
+func (ak *ApiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error) {
+	keys := APIKeys{}
+	return ak.VerifyCustomKey(&keys, apiKey, headers)
+}
 
-	if apiKey == "" {
+// VerifyCustomKey verifies a custom API key model
+func (ak *ApiKeyAuth) VerifyCustomKey(input APIKeysGetter, apiKey string, headers http.Header) (*APIKey, error) {
+
+	// get either api key header or web domain to authorize the application
+	var andWhere []map[string]any
+	origin := getRequestOrigin(headers)
+	if isWebBrowserAgent(headers.Get("User-Agent")) {
+		if origin == "" {
+			return nil, errors.New("request origin required")
+		}
+
+		andWhere = append(andWhere, map[string]any{
+			"allowed_fqdn": map[string]any{
+				"_contains": []string{origin},
+			},
+		})
+	}
+
+	if apiKey != "" {
+		andWhere = append(andWhere, map[string]any{
+			"api_key": map[string]any{
+				"_eq": apiKey,
+			},
+		})
+	}
+
+	if len(andWhere) == 0 {
 		return nil, errors.New(ErrCodeAPIKeyRequired)
 	}
 
-	var query struct {
-		APIKeys []APIKey `graphql:"api_key(where: $where, limit: 1)"`
-	}
+	builder := gql.NewBuilder().Bind("api_key(where: $where, limit: 1)", input).
+		Variable("where", api_key_bool_exp{
+			"_and": andWhere,
+		})
 
-	variables := map[string]interface{}{
-		"where": api_key_bool_exp{
-			"api_key": map[string]string{
-				"_eq": apiKey,
-			},
-		},
-	}
-
-	err := ak.client.Query(context.Background(), &query, variables, gql.OperationName("GetAPIKey"))
-
+	err := builder.Query(ak.client, gql.OperationName("GetAPIKey"))
 	if err != nil {
 		return nil, err
 	}
 
-	if len(query.APIKeys) == 0 {
+	keys := input.Get()
+	if len(keys) == 0 {
 		return nil, errors.New(ErrCodeAPIKeyNotFound)
 	}
 
-	apiK := query.APIKeys[0]
-	if err = ak.validate(&apiK, headers); err != nil {
+	if err = ak.validate(&keys[0], headers, origin); err != nil {
 		return nil, err
 	}
-	return &apiK, nil
+	return &keys[0], nil
 }
 
-func (ak *apiKeyAuth) validate(apiK *APIKey, headers http.Header) error {
+func (ak *ApiKeyAuth) validate(apiK *APIKey, headers http.Header, origin string) error {
 
 	if !apiK.ExpiredAt.IsZero() && apiK.ExpiredAt.Before(time.Now()) {
 		return errors.New(ErrCodeAPIKeyExpired)
 	}
 
-	if apiK.AllowedFQDN != "" {
-		if headers == nil {
-			return errors.New(ErrCodeAPIKeyInvalidFQDN)
-		}
-		fqdn := strings.Split(apiK.AllowedFQDN, ":")
-		reqHost, reqPort := getRequestHost(headers)
-		if fqdn[0] != reqHost || (len(fqdn) == 1 && reqPort != "80" && reqPort != "443") ||
-			(len(fqdn) == 2 && reqPort != fqdn[1]) ||
-			len(fqdn) > 2 {
-			return errors.New(ErrCodeAPIKeyInvalidFQDN)
-		}
+	if origin == "" && len(apiK.AllowedFQDN) > 0 {
+		return errors.New(ErrCodeAPIKeyInvalidFQDN)
 	}
 
 	ipValid := false

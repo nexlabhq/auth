@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +17,12 @@ const (
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
 	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
 	digits        = "0123456789"
+	alphabets     = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	alphaDigits   = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+)
+
+var (
+	webBrowserRegex = regexp.MustCompile(`(?i)(opera|chrome|safari|firefox|msie|trident)[/\s]([\d.]+)`)
 )
 
 var src = rand.NewSource(time.Now().UnixNano())
@@ -57,13 +63,23 @@ func genID() string {
 		genRandomString(8)
 }
 
-// getRequestHost gets a requests host by reading off the forwarded-host
-// header (for proxies) and falls back to use the remote address.
-func getRequestHost(r http.Header) (string, string) {
-	host := r.Get("X-Forwarded-Host")
-	port := r.Get("X-Forwarded-Port")
+// isWebBrowserAgent checks if the user agent is from web browser
+func isWebBrowserAgent(userAgent string) bool {
+	if userAgent == "" {
+		return false
+	}
 
-	return host, port
+	return webBrowserRegex.MatchString(userAgent)
+}
+
+// getRequestOrigin get request origin from origin or x-forwarded-origin header
+func getRequestOrigin(header http.Header) string {
+	origin := header.Get("Origin")
+	if origin != "" {
+		return origin
+	}
+
+	return header.Get("X-Forwarded-Origin")
 }
 
 // getRequestIP gets a requests IP address by reading off the forwarded-for
@@ -133,4 +149,58 @@ func getPositionFromSession(sessionVariables map[string]string) (*GeoPoint, erro
 		return nil, nil
 	}
 	return result, nil
+}
+
+func getPtr[V any](value V) *V {
+	return &value
+}
+
+func isTrue(ptr *bool) bool {
+	if ptr != nil && *ptr {
+		return true
+	}
+
+	return false
+}
+
+func isStringPtrEmpty(ptr *string) bool {
+	if ptr != nil && *ptr != "" {
+		return false
+	}
+
+	return true
+}
+
+// sliceIndex returns the index of the first occurrence of v in s,
+// or -1 if not present.
+func sliceIndex[E comparable](s []E, v E) int {
+	for i, vs := range s {
+		if v == vs {
+			return i
+		}
+	}
+	return -1
+}
+
+// sliceContains reports whether v is present in s.
+func sliceContains[E comparable](s []E, v E) bool {
+	return sliceIndex(s, v) >= 0
+}
+
+// mergeMap merge values of maps
+func mergeMap[K comparable, V any](src map[K]V, dest map[K]V, extras ...map[K]V) map[K]V {
+	if src == nil {
+		src = make(map[K]V)
+	}
+	for k, v := range dest {
+		src[k] = v
+	}
+	if len(extras) > 0 {
+		for _, extra := range extras {
+			for k, v := range extra {
+				src[k] = v
+			}
+		}
+	}
+	return src
 }

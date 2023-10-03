@@ -50,11 +50,13 @@ func (jac JWTAuthConfig) Validate() error {
 	return nil
 }
 
+// JWTAuth implements the AuthProvider interface for JWT authentication
 type JWTAuth struct {
 	client *gql.Client
 	config JWTAuthConfig
 }
 
+// NewJWTAuth creates a new JWTAuth instance
 func NewJWTAuth(client *gql.Client, config JWTAuthConfig) *JWTAuth {
 	if config.Cost == 0 {
 		config.Cost = bcrypt.DefaultCost
@@ -78,37 +80,31 @@ func (ja JWTAuth) GetName() AuthProviderType {
 }
 
 func (ja *JWTAuth) CreateUser(input *CreateAccountInput) (*Account, error) {
-	if input.Password == "" {
-		return nil, errors.New(ErrCodePasswordRequired)
+	var sHashPassword string
+	if isStringPtrEmpty(input.ID) {
+		id := genID()
+		input.ID = &id
 	}
 
-	if input.ID == "" {
-		input.ID = genID()
-	}
+	if !isStringPtrEmpty(input.Password) {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*input.Password), ja.config.Cost)
+		if err != nil {
+			return nil, err
+		}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), ja.config.Cost)
-	if err != nil {
-		return nil, err
+		sHashPassword = string(hashedPassword)
 	}
 
 	metadata := map[string]interface{}{
 		"checksum": genRandomString(ja.config.ChecksumLength),
 	}
 	return &Account{
-		BaseAccount: BaseAccount{
-			ID:          input.ID,
-			Email:       input.Email,
-			Password:    string(hashedPassword),
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Role:        input.Role,
-			Verified:    input.Verified,
-		},
+		BaseAccount: input.ToBaseAccount(),
+		Password:    sHashPassword,
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
-				ProviderUserID: input.ID,
+				ProviderUserID: *input.ID,
 				Metadata:       metadata,
 			},
 		},
@@ -158,7 +154,7 @@ func (ja *JWTAuth) SetCustomClaims(uid string, input map[string]interface{}) err
 	return errors.New(ErrCodeUnsupported)
 }
 
-func (ja *JWTAuth) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
+func (ja *JWTAuth) EncodeToken(cred *AccountProvider, scopes []AuthScope, options ...AccessTokenOption) (*AccessToken, error) {
 
 	now := time.Now()
 	exp := now.Add(ja.config.TTL)
@@ -214,7 +210,7 @@ func (ja *JWTAuth) EncodeToken(cred *AccountProvider, options ...AccessTokenOpti
 
 	// encode refresh token if the expiry is set
 	var refreshToken string
-	if ja.config.RefreshTTL >= ja.config.TTL {
+	if sliceContains(scopes, ScopeOfflineAccess) && ja.config.RefreshTTL >= ja.config.TTL {
 		refreshPayload := jwtPayload{
 			JwtID:          ja.genRefreshTokenID(jwtID),
 			Issuer:         ja.config.Issuer,
@@ -301,6 +297,7 @@ func (ja *JWTAuth) validateTokenChecksum(userId string, checksum string) (*Accou
 	return &provider, nil
 }
 
+// VerifyToken decodes and verifies the JWT token
 func (ja *JWTAuth) VerifyToken(token string) (*AccountProvider, map[string]interface{}, error) {
 
 	result, err := ja.decodeToken(token)
@@ -334,14 +331,15 @@ func (ja *JWTAuth) ChangePassword(uid string, newPassword string) error {
 		} `graphql:"update_account(where: $where, _set: $setValues)"`
 	}
 
+	sPassword := string(hashedPassword)
 	variables := map[string]interface{}{
 		"where": account_bool_exp{
 			"id": map[string]string{
 				"_eq": uid,
 			},
 		},
-		"setValues": account_set_input{
-			"password": string(hashedPassword),
+		"setValues": UpdateAccountInput{
+			Password: &sPassword,
 		},
 	}
 
@@ -479,7 +477,8 @@ func (ja *JWTAuth) DeleteUser(uid string) error {
 	return nil
 }
 
-func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
+// VerifyRefreshToken decode, verify signature and checksum of the refresh token
+func (ja *JWTAuth) VerifyRefreshToken(refreshToken string) (*AccountProvider, error) {
 	decodedRefreshToken, err := ja.decodeToken(refreshToken)
 	if err != nil {
 		return nil, err
@@ -489,23 +488,16 @@ func (ja *JWTAuth) RefreshToken(refreshToken string, accessToken string, options
 		return nil, errors.New(ErrCodeRefreshTokenAudienceMismatched)
 	}
 
-	decodedToken, err := ja.decodeToken(accessToken)
-	if err != nil && err.Error() != ErrCodeTokenExpired {
-		return nil, err
-	}
+	return ja.validateTokenChecksum(decodedRefreshToken.Subject, decodedRefreshToken.Checksum)
+}
 
-	if decodedRefreshToken.JwtID != ja.genRefreshTokenID(decodedToken.JwtID) ||
-		decodedRefreshToken.Subject != decodedToken.Subject ||
-		decodedRefreshToken.IssuedAt != decodedToken.IssuedAt {
-		return nil, errors.New(ErrCodeTokenMismatched)
-	}
-
-	provider, err := ja.validateTokenChecksum(decodedToken.Subject, decodedToken.Checksum)
+// RefreshToken verify and generate new tokens
+func (ja *JWTAuth) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
+	provider, err := ja.VerifyRefreshToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
-
-	return ja.EncodeToken(provider, options...)
+	return ja.EncodeToken(provider, []AuthScope{ScopeOpenID, ScopeOfflineAccess}, options...)
 }
 
 func (ja *JWTAuth) decodeToken(token string) (*jwtPayload, error) {
@@ -541,20 +533,17 @@ func (ja *JWTAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, 
 	metadata := map[string]interface{}{
 		"checksum": genRandomString(ja.config.ChecksumLength),
 	}
+
+	var providerUserID string
+	if input.ID != nil {
+		providerUserID = *input.ID
+	}
 	return &Account{
-		BaseAccount: BaseAccount{
-			ID:          input.ID,
-			Email:       input.Email,
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Role:        input.Role,
-			Verified:    input.Verified,
-		},
+		BaseAccount: input.ToBaseAccount(),
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
-				ProviderUserID: input.ID,
+				ProviderUserID: providerUserID,
 				Metadata:       metadata,
 			},
 		},
@@ -562,19 +551,44 @@ func (ja *JWTAuth) GetOrCreateUserByPhone(input *CreateAccountInput) (*Account, 
 }
 
 func (ja *JWTAuth) UpdateUser(uid string, input UpdateAccountInput) (*Account, error) {
+	baseAccount := input.ToBaseAccount()
+	baseAccount.ID = uid
 	return &Account{
-		BaseAccount: BaseAccount{
-			ID:          uid,
-			Email:       input.Email,
-			DisplayName: input.DisplayName,
-			PhoneCode:   input.PhoneCode,
-			PhoneNumber: input.PhoneNumber,
-			Verified:    input.Verified,
-		},
+		BaseAccount: baseAccount,
 		AccountProviders: []AccountProvider{
 			{
 				Name:           string(AuthJWT),
 				ProviderUserID: uid,
+			},
+		},
+	}, nil
+}
+
+// PromoteAnonymousUser promotes the current anonymous user to the default user role
+func (ja *JWTAuth) PromoteAnonymousUser(providerID string, input *CreateAccountInput) (*Account, error) {
+
+	var sPassword string
+	if !isStringPtrEmpty(input.Password) {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*input.Password), ja.config.Cost)
+		if err != nil {
+			return nil, err
+		}
+		sPassword = string(hashedPassword)
+	}
+
+	metadata := map[string]interface{}{
+		"checksum": genRandomString(ja.config.ChecksumLength),
+	}
+
+	baseAccount := input.ToBaseAccount()
+	return &Account{
+		BaseAccount: baseAccount,
+		Password:    sPassword,
+		AccountProviders: []AccountProvider{
+			{
+				Name:           string(AuthJWT),
+				ProviderUserID: *input.ID,
+				Metadata:       metadata,
 			},
 		},
 	}, nil

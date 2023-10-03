@@ -30,20 +30,22 @@ type AccountManagerConfig struct {
 	JWT         *JWTAuthConfig
 	OTP         AuthOTPConfig
 
-	CreateFromToken bool             `envconfig:"AUTH_CREATE_FROM_TOKEN" default:"false"`
-	Enabled2FA      bool             `envconfig:"AUTH_2FA_ENABLED"`
-	DefaultProvider AuthProviderType `envconfig:"DEFAULT_AUTH_PROVIDER" required:"true"`
-	DefaultRole     string           `envconfig:"DEFAULT_ROLE" required:"true"`
+	CreateFromToken      bool             `envconfig:"AUTH_CREATE_FROM_TOKEN" default:"false"`
+	Enabled2FA           bool             `envconfig:"AUTH_2FA_ENABLED"`
+	DefaultProvider      AuthProviderType `envconfig:"DEFAULT_AUTH_PROVIDER" required:"true"`
+	DefaultRole          string           `envconfig:"DEFAULT_ROLE" required:"true"`
+	DefaultRoleAnonymous string           `envconfig:"DEFAULT_ROLE_ANONYMOUS" default:"anonymous"`
 }
 
 // AccountManager account business method
 type AccountManager struct {
-	providers       map[AuthProviderType]AuthProvider
-	gqlClient       *gql.Client
-	providerType    AuthProviderType
-	defaultRole     string
-	createFromToken bool
-	otp             AuthOTPConfig
+	providers            map[AuthProviderType]AuthProvider
+	gqlClient            *gql.Client
+	providerType         AuthProviderType
+	defaultRole          string
+	createFromToken      bool
+	otp                  AuthOTPConfig
+	defaultRoleAnonymous string
 }
 
 // NewAccountManager create new AccountManager instance
@@ -65,7 +67,9 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 
 	providers := make(map[AuthProviderType]AuthProvider)
 	if config.FirebaseApp != nil {
-		providers[AuthFirebase] = NewFirebaseAuth(config.FirebaseApp)
+		firebaseAuth := NewFirebaseAuth(config.FirebaseApp)
+		firebaseAuth.roleAnonymous = config.DefaultRoleAnonymous
+		providers[AuthFirebase] = firebaseAuth
 	}
 
 	if config.JWT != nil {
@@ -77,12 +81,13 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 	}
 
 	return &AccountManager{
-		providers:       providers,
-		gqlClient:       config.GQLClient,
-		providerType:    config.DefaultProvider,
-		defaultRole:     config.DefaultRole,
-		createFromToken: config.CreateFromToken,
-		otp:             config.OTP,
+		providers:            providers,
+		gqlClient:            config.GQLClient,
+		providerType:         config.DefaultProvider,
+		defaultRole:          config.DefaultRole,
+		createFromToken:      config.CreateFromToken,
+		otp:                  config.OTP,
+		defaultRoleAnonymous: config.DefaultRoleAnonymous,
 	}, nil
 }
 
@@ -128,7 +133,7 @@ func (am *AccountManager) ChangeProviderPassword(uid string, newPassword string)
 }
 
 // FindAccountByProviderEmail find account by email
-func (am *AccountManager) FindAccountByProviderEmail(email string) (*Account, error) {
+func (am *AccountManager) FindAccountByProviderEmail(email string, accountBoolExp map[string]any) (*Account, error) {
 
 	u, err := am.getCurrentProvider().GetUserByEmail(email)
 	if err != nil {
@@ -141,7 +146,7 @@ func (am *AccountManager) FindAccountByProviderEmail(email string) (*Account, er
 		return u, nil
 	}
 
-	acc, err := am.findAccountByProviderUser(u.AccountProviders[0].ProviderUserID)
+	acc, err := am.findAccountByProviderUser(u.AccountProviders[0].ProviderUserID, accountBoolExp)
 	if err != nil || acc != nil {
 		return acc, err
 	}
@@ -206,21 +211,22 @@ func (am *AccountManager) FindOne(where map[string]interface{}) (*Account, error
 }
 
 // CreateAccountWithProvider get or create account with provider
-func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (*Account, error) {
+func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, extraFields map[string]interface{}) (*Account, error) {
 
 	ctx := context.Background()
 
-	if (input.EmailEnabled || (!input.EmailEnabled && !input.PhoneEnabled)) && input.Email == "" {
+	if (isTrue(input.EmailEnabled) || (!isTrue(input.EmailEnabled) && !isTrue(input.PhoneEnabled))) &&
+		isStringPtrEmpty(input.Email) {
 		return nil, errors.New(ErrCodeEmailRequired)
 	}
 
-	if input.PhoneEnabled && (input.PhoneCode == 0 || input.PhoneNumber == "") {
+	if isTrue(input.PhoneEnabled) && (input.PhoneCode == nil || isStringPtrEmpty(input.PhoneNumber)) {
 		return nil, errors.New(ErrCodePhoneRequired)
 	}
 
 	// set default login as email
-	if !input.EmailEnabled && !input.PhoneEnabled {
-		input.EmailEnabled = true
+	if !isTrue(input.EmailEnabled) && !isTrue(input.PhoneEnabled) {
+		input.EmailEnabled = getPtr(true)
 	}
 
 	// check if the account exists
@@ -235,10 +241,10 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (
 
 	condition := make([]map[string]interface{}, 0)
 
-	if input.Email != "" {
+	if !isStringPtrEmpty(input.Email) {
 		condition = append(condition, map[string]interface{}{
 			"email": map[string]string{
-				"_eq": input.Email,
+				"_eq": *input.Email,
 			},
 			"email_enabled": map[string]bool{
 				"_eq": true,
@@ -246,12 +252,12 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (
 		})
 	}
 
-	if input.PhoneNumber != "" {
+	if !isStringPtrEmpty(input.PhoneNumber) {
 		condition = append(condition, map[string]interface{}{
-			"phone_code": map[string]int{
+			"phone_code": map[string]any{
 				"_eq": input.PhoneCode,
 			},
-			"phone_number": map[string]string{
+			"phone_number": map[string]any{
 				"_eq": input.PhoneNumber,
 			},
 			"phone_enabled": map[string]bool{
@@ -281,7 +287,7 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (
 		return nil, errors.New(ErrCodeAccountExisted)
 	}
 
-	input.ID = genID()
+	input.ID = getPtr(genID())
 	acc, err := am.CreateProviderAccount(input)
 
 	if err != nil {
@@ -292,9 +298,9 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (
 		"id":            acc.ID,
 		"display_name":  input.DisplayName,
 		"role":          input.Role,
-		"verified":      input.Verified,
-		"email_enabled": input.EmailEnabled,
-		"phone_enabled": input.PhoneEnabled,
+		"verified":      isTrue(input.Verified),
+		"email_enabled": isTrue(input.EmailEnabled),
+		"phone_enabled": isTrue(input.PhoneEnabled),
 		"account_providers": map[string]interface{}{
 			"data": acc.AccountProviders,
 		},
@@ -304,16 +310,22 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput) (
 		accInsertInput["password"] = acc.Password
 	}
 
-	if input.Email != "" {
+	if !isStringPtrEmpty(input.Email) {
 		accInsertInput["email"] = input.Email
 	}
 
-	if input.PhoneCode != 0 {
+	if input.PhoneCode != nil && *input.PhoneCode != 0 {
 		accInsertInput["phone_code"] = input.PhoneCode
 	}
 
-	if input.PhoneNumber != "" {
+	if !isStringPtrEmpty(input.PhoneNumber) {
 		accInsertInput["phone_number"] = input.PhoneNumber
+	}
+
+	if len(extraFields) > 0 {
+		for k, v := range extraFields {
+			accInsertInput[k] = v
+		}
 	}
 
 	uid, err := am.InsertAccount(accInsertInput)
@@ -404,15 +416,22 @@ func (am *AccountManager) CreateProvider(input AccountProvider) error {
 }
 
 // VerifyToken validate and return provider user id
-func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interface{}, error) {
+func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]any, extraFields map[string]any) (*Account, map[string]interface{}, error) {
 	provider, claims, err := am.getCurrentProvider().VerifyToken(token)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	acc, err := am.findAccountByProviderUser(provider.ProviderUserID)
-	if err != nil || acc != nil {
-		return acc, claims, err
+	acc, err := am.findAccountByProviderUser(provider.ProviderUserID, accountBoolExp)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if acc != nil {
+		if acc.Disabled {
+			return nil, nil, errors.New(ErrCodeAccountDisabled)
+		}
+		return acc, claims, nil
 	}
 
 	if !am.createFromToken {
@@ -430,8 +449,6 @@ func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interf
 	acc.ID = genID()
 	accInsertInput := map[string]interface{}{
 		"id":            acc.ID,
-		"display_name":  acc.DisplayName,
-		"role":          am.defaultRole,
 		"verified":      acc.Verified,
 		"email_enabled": acc.Email != "",
 		"phone_enabled": acc.PhoneNumber != "",
@@ -439,6 +456,14 @@ func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interf
 			"data": acc.AccountProviders,
 		},
 	}
+	if acc.DisplayName != "" {
+		accInsertInput["display_name"] = acc.DisplayName
+	}
+	role := am.defaultRole
+	if acc.Role != "" {
+		role = acc.Role
+	}
+	accInsertInput["role"] = role
 
 	if acc.Email != "" {
 		accInsertInput["email"] = acc.Email
@@ -447,6 +472,12 @@ func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interf
 	if acc.PhoneNumber != "" {
 		accInsertInput["phone_code"] = acc.PhoneCode
 		accInsertInput["phone_number"] = acc.PhoneNumber
+	}
+
+	if len(extraFields) > 0 {
+		for k, v := range extraFields {
+			accInsertInput[k] = v
+		}
 	}
 
 	_, err = am.InsertAccount(accInsertInput)
@@ -459,16 +490,17 @@ func (am *AccountManager) VerifyToken(token string) (*Account, map[string]interf
 	return acc, claims, nil
 }
 
-func (am *AccountManager) findAccountByProviderUser(userId string) (*Account, error) {
+func (am *AccountManager) findAccountByProviderUser(userId string, accountBoolExp map[string]any) (*Account, error) {
 	// Get user by provider
 	var query struct {
-		AccountProviders []struct {
-			Account BaseAccount `graphql:"account"`
-		} `graphql:"account_provider(where: $where, limit: 1)"`
+		Account []struct {
+			BaseAccount
+			AccountProviders []AccountProvider `graphql:"account_providers(where: $providerWhere)"`
+		} `graphql:"account(where: $where, limit: 1)"`
 	}
 
-	variables := map[string]interface{}{
-		"where": account_provider_bool_exp{
+	providerOrConditions := []map[string]any{
+		{
 			"provider_user_id": map[string]string{
 				"_eq": userId,
 			},
@@ -478,26 +510,45 @@ func (am *AccountManager) findAccountByProviderUser(userId string) (*Account, er
 		},
 	}
 
-	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountProvider"))
+	// we may use custom firebase token with uid = account_id
+	if am.providerType == AuthFirebase {
+		providerOrConditions = append(providerOrConditions, map[string]any{
+			"account_id": map[string]string{
+				"_eq": userId,
+			},
+		})
+	}
+
+	where := account_bool_exp{
+		"account_providers": map[string]any{
+			"_or": providerOrConditions,
+		},
+	}
+
+	for k, exp := range accountBoolExp {
+		where[k] = exp
+	}
+
+	variables := map[string]interface{}{
+		"where": where,
+		"providerWhere": account_provider_bool_exp{
+			"_or": providerOrConditions,
+		},
+	}
+
+	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountByProvider"))
 	if err != nil {
 		return nil, err
 	}
 
-	if len(query.AccountProviders) > 0 {
-		accProvider := query.AccountProviders[0]
-		return &Account{
-			BaseAccount: accProvider.Account,
-			AccountProviders: []AccountProvider{
-				{
-					ProviderUserID: userId,
-					AccountID:      &accProvider.Account.ID,
-					Name:           string(am.providerType),
-				},
-			},
-		}, nil
+	if len(query.Account) == 0 {
+		return nil, nil
 	}
 
-	return nil, nil
+	return &Account{
+		BaseAccount:      query.Account[0].BaseAccount,
+		AccountProviders: filterProvidersByType(query.Account[0].AccountProviders, am.providerType),
+	}, nil
 }
 
 func (am *AccountManager) SignInWithEmailAndPassword(email string, password string) (*Account, error) {
@@ -512,12 +563,16 @@ func (am *AccountManager) SignInWithPhoneAndPassword(phoneCode int, phoneNumber 
 	return am.getCurrentProvider().SignInWithPhoneAndPassword(phoneCode, phoneNumber, password)
 }
 
-func (am *AccountManager) EncodeToken(cred *AccountProvider, options ...AccessTokenOption) (*AccessToken, error) {
-	return am.getCurrentProvider().EncodeToken(cred, options...)
+func (am *AccountManager) EncodeToken(cred *AccountProvider, scopes []AuthScope, options ...AccessTokenOption) (*AccessToken, error) {
+	return am.getCurrentProvider().EncodeToken(cred, scopes, options...)
 }
 
-func (am *AccountManager) RefreshToken(refreshToken string, accessToken string, options ...AccessTokenOption) (*AccessToken, error) {
-	return am.getCurrentProvider().RefreshToken(refreshToken, accessToken, options...)
+func (am *AccountManager) VerifyRefreshToken(refreshToken string) (*AccountProvider, error) {
+	return am.getCurrentProvider().VerifyRefreshToken(refreshToken)
+}
+
+func (am *AccountManager) RefreshToken(refreshToken string, options ...AccessTokenOption) (*AccessToken, error) {
+	return am.getCurrentProvider().RefreshToken(refreshToken, options...)
 }
 
 // ChangePassword change all providers's password of current user
@@ -602,432 +657,6 @@ func (am *AccountManager) ChangeAllProvidersPassword(providers []AccountProvider
 		}
 	}
 	return nil
-}
-
-// DeleteUser delete user by identity
-func (am *AccountManager) DeleteUser(id string) error {
-	var query struct {
-		AccountProviders []AccountProvider `graphql:"account_provider(where: $where)"`
-	}
-
-	queryVariables := map[string]interface{}{
-		"where": account_provider_bool_exp{
-			"account_id": map[string]string{
-				"_eq": id,
-			},
-		},
-	}
-
-	err := am.gqlClient.Query(context.Background(), &query, queryVariables, gql.OperationName("GetAccountWithProvider"))
-
-	if err != nil {
-		return err
-	}
-
-	// delete user from authentication providers
-	for _, ap := range query.AccountProviders {
-		err = am.As(AuthProviderType(ap.Name)).getCurrentProvider().DeleteUser(ap.ProviderUserID)
-		if err != nil {
-			return err
-		}
-	}
-
-	var deleteMutation struct {
-		DeleteAccount struct {
-			AffectedRows int `graphql:"affected_rows"`
-		} `graphql:"delete_account(where: $where)"`
-	}
-
-	deleteVariables := map[string]interface{}{
-		"where": account_bool_exp{
-			"id": map[string]string{
-				"_eq": id,
-			},
-		},
-	}
-
-	return am.gqlClient.Mutate(context.Background(), &deleteMutation, deleteVariables, gql.OperationName("DeleteAccountById"))
-
-}
-
-// DeleteUsers delete many users by condition
-func (am *AccountManager) DeleteUsers(where map[string]interface{}) error {
-	var query struct {
-		Accounts []Account `graphql:"account(where: $where)"`
-	}
-
-	queryVariables := map[string]interface{}{
-		"where": account_bool_exp(where),
-	}
-
-	err := am.gqlClient.Query(context.Background(), &query, queryVariables, gql.OperationName("GetAccountsWithProvider"))
-
-	if err != nil {
-		return err
-	}
-
-	// delete user from authentication providers
-	for _, acc := range query.Accounts {
-		for _, ap := range acc.AccountProviders {
-			err = am.As(AuthProviderType(ap.Name)).getCurrentProvider().DeleteUser(ap.ProviderUserID)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	var deleteMutation struct {
-		DeleteAccount struct {
-			AffectedRows int `graphql:"affected_rows"`
-		} `graphql:"delete_account(where: $where)"`
-	}
-
-	return am.gqlClient.Mutate(context.Background(), &deleteMutation, queryVariables, gql.OperationName("DeleteAccountById"))
-}
-
-// GenerateOTP check if the account exists and generate the authentication otp
-func (am *AccountManager) GenerateOTP(sessionVariables map[string]string, phoneCode int, phoneNumber string) OTPOutput {
-
-	if !am.otp.Enabled {
-		return OTPOutput{
-			Error: ErrCodeUnsupported,
-		}
-	}
-
-	if phoneNumber == "" {
-		return OTPOutput{
-			Error: ErrCodePhoneRequired,
-		}
-	}
-	var err error
-	phoneCode, phoneNumber, err = parseI18nPhoneNumber(phoneNumber, phoneCode)
-	if err != nil {
-		return OTPOutput{
-			Error: ErrCodeInvalidPhone,
-		}
-	}
-
-	var query struct {
-		Account []struct {
-			ID         string `graphql:"id"`
-			Disabled   bool   `graphql:"disabled"`
-			Activities []struct {
-				Type      ActivityType `graphql:"type"`
-				CreatedAt time.Time    `graphql:"created_at"`
-			} `graphql:"activities(where: $activityWhere, order_by: { created_at: desc }, limit: $activityLimit)"`
-		} `graphql:"account(where: $where, limit: 1)"`
-	}
-
-	variables := map[string]interface{}{
-		"where": account_bool_exp{
-			"phone_code": map[string]interface{}{
-				"_eq": phoneCode,
-			},
-			"phone_number": map[string]interface{}{
-				"_eq": phoneNumber,
-			},
-			"phone_enabled": map[string]interface{}{
-				"_eq": true,
-			},
-		},
-		"activityWhere": account_activity_bool_exp{
-			"created_at": map[string]interface{}{
-				"_gte": time.Now().Add(-1 * time.Hour),
-			},
-			"type": map[string]interface{}{
-				"_in": []ActivityType{ActivityLogin, ActivityOTP, ActivityOTPFailure, ActivityLogout},
-			},
-		},
-		"activityLimit": graphql.Int(am.otp.LoginDisableLimit),
-	}
-
-	err = am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountWithActivities"))
-	if err != nil {
-		return OTPOutput{
-			Error: err.Error(),
-		}
-	}
-
-	activity, otp, otpExpiry := am.newOTPActivity(sessionVariables, "", ActivityOTP)
-	var accountID string
-	if len(query.Account) == 0 {
-		// create the account if it doesn't exist
-		accountID, err = am.InsertAccount(map[string]interface{}{
-			"id":            genID(),
-			"phone_code":    phoneCode,
-			"phone_number":  phoneNumber,
-			"phone_enabled": true,
-			"role":          am.defaultRole,
-			"activities": map[string]interface{}{
-				"data": []map[string]interface{}{activity},
-			},
-		})
-
-		if err != nil {
-			return OTPOutput{
-				Error: err.Error(),
-			}
-		}
-	} else {
-		account := query.Account[0]
-		accountID = account.ID
-		if account.Disabled {
-			return OTPOutput{
-				Error: ErrCodeAccountDisabled,
-			}
-		}
-
-		var otpTime time.Time
-		var failureLatestTime time.Time
-		failureCount := 0
-
-		for _, act := range account.Activities {
-			if act.Type == ActivityOTP {
-				otpTime = act.CreatedAt
-			} else if act.Type == ActivityLogin || act.Type == ActivityLogout {
-				break
-			} else {
-				if failureLatestTime.IsZero() {
-					failureLatestTime = act.CreatedAt
-				}
-				failureCount++
-			}
-		}
-
-		if failureCount > int(am.otp.LoginDisableLimit) {
-			return OTPOutput{
-				Error: ErrCodeAccountDisabled,
-			}
-		}
-
-		now := time.Now()
-		lockedRemain := failureLatestTime.Add(am.otp.LoginLockDuration).Sub(now)
-		if failureCount >= int(am.otp.LoginLimit) && lockedRemain > 0 {
-			return OTPOutput{
-				Error:          ErrCodeAccountTemporarilyLocked,
-				LockedDuration: uint(lockedRemain.Seconds()),
-			}
-		}
-
-		if otpTime.Add(am.otp.TTL).After(now) {
-			return OTPOutput{
-				Error: ErrCodeOTPAlreadySent,
-			}
-		}
-
-		// otherwise validate the account and insert the activity
-		var createActivityMutation struct {
-			CreateActivity struct {
-				AffectedRows int `graphql:"affected_rows"`
-			} `graphql:"insert_account_activity(objects: $objects)"`
-		}
-
-		activity["account_id"] = account.ID
-		variables := map[string]interface{}{
-			"objects": []account_activity_insert_input{activity},
-		}
-		err = am.gqlClient.Mutate(context.TODO(), &createActivityMutation, variables, graphql.OperationName("CreateAccountActivities"))
-		if err != nil {
-			return OTPOutput{
-				Error: err.Error(),
-			}
-		}
-	}
-
-	return OTPOutput{
-		Code:      otp,
-		Expiry:    otpExpiry,
-		AccountID: accountID,
-	}
-}
-
-func (am *AccountManager) newOTPActivity(sessionVariables map[string]string, accountID string, activityType ActivityType) (account_activity_insert_input, string, time.Time) {
-
-	otp := genRandomString(int(am.otp.OTPLength), digits)
-	otpExpiry := time.Now().Add(am.otp.TTL)
-
-	return am.newActivity(sessionVariables, accountID, activityType, map[string]interface{}{
-		"otp": otp,
-	}), otp, otpExpiry
-}
-
-// VerifyOTP verify if the otp code matches the current account
-func (am *AccountManager) VerifyOTP(sessionVariables map[string]string, input VerifyOTPInput) (*AccessToken, error) {
-
-	if !am.otp.Enabled {
-		return nil, errors.New(ErrCodeUnsupported)
-	}
-
-	if input.PhoneNumber == "" {
-		return nil, errors.New(ErrCodePhoneRequired)
-	}
-
-	var err error
-	phoneCode, phoneNumber, err := parseI18nPhoneNumber(input.PhoneNumber, input.PhoneCode)
-	if err != nil {
-		return nil, errors.New(ErrCodeInvalidPhone)
-	}
-
-	var accountQuery struct {
-		Accounts []struct {
-			ID         string `graphql:"id"`
-			Disabled   bool   `graphql:"disabled"`
-			Activities []struct {
-				Type      ActivityType `graphql:"type"`
-				CreatedAt time.Time    `graphql:"created_at"`
-				Metadata  *struct {
-					OTP string `json:"otp"`
-				} `graphql:"metadata" scalar:"true" json:"metadata"`
-			} `graphql:"activities(where: $activityWhere, order_by: { created_at: desc }, limit: $activityLimit)"`
-			AccountProviders []AccountProvider `json:"account_providers" graphql:"account_providers(where: $providerWhere, limit: 1)"`
-		} `graphql:"account(where: $where, limit: 1)"`
-	}
-
-	variables := map[string]interface{}{
-		"where": account_bool_exp{
-			"phone_code": map[string]interface{}{
-				"_eq": phoneCode,
-			},
-			"phone_number": map[string]interface{}{
-				"_eq": phoneNumber,
-			},
-			"phone_enabled": map[string]interface{}{
-				"_eq": true,
-			},
-		},
-		"activityWhere": account_activity_bool_exp{
-			"created_at": map[string]interface{}{
-				"_gte": time.Now().Add(-time.Hour),
-			},
-			"type": map[string]interface{}{
-				"_in": []ActivityType{ActivityOTP, ActivityLogin, ActivityLogout, ActivityOTPFailure},
-			},
-		},
-		"activityLimit": graphql.Int(am.otp.LoginDisableLimit + 1),
-		"providerWhere": account_provider_bool_exp{
-			"provider_name": map[string]interface{}{
-				"_eq": am.GetProviderName(),
-			},
-		},
-	}
-
-	err = am.gqlClient.Query(context.TODO(), &accountQuery, variables, graphql.OperationName("FindAccountWithActivities"))
-
-	if err != nil {
-		return nil, err
-	}
-
-	if len(accountQuery.Accounts) == 0 {
-		return nil, errors.New(ErrCodeAccountNotFound)
-	}
-
-	if accountQuery.Accounts[0].Disabled {
-		return nil, errors.New(ErrCodeAccountDisabled)
-	}
-
-	if len(accountQuery.Accounts[0].Activities) == 0 {
-		return nil, errors.New(ErrCodeInvalidOTP)
-	}
-
-	account := accountQuery.Accounts[0]
-	// static otp code check in dev mode
-	if !am.otp.DevMode || input.OTP != am.otp.DevOTPCode {
-		otpActivityIndex := -1
-		for i, activity := range account.Activities {
-			if activity.Type == ActivityLogin || activity.Type == ActivityLogout {
-				break
-			} else if activity.Type == ActivityOTP {
-				otpActivityIndex = i
-				break
-			}
-		}
-		if otpActivityIndex < 0 || (account.Activities[otpActivityIndex].CreatedAt.Add(am.otp.TTL).Before(time.Now())) ||
-			(account.Activities[otpActivityIndex].Metadata != nil && account.Activities[otpActivityIndex].Metadata.OTP != input.OTP) {
-
-			_ = am.CreateActivity(sessionVariables, account.ID, ActivityOTPFailure, nil)
-			if otpActivityIndex+1 > int(am.otp.LoginDisableLimit) {
-				// disable the user if the failure count exceed limit
-				var updateAccountMutation struct {
-					UpdateAccount struct {
-						AffectedRows int `graphql:"affected_rows"`
-					} `graphql:"update_account(where: { id: { _eq: $id } }, _set: $_set)"`
-				}
-
-				updateVariables := map[string]interface{}{
-					"id": graphql.String(account.ID),
-					"_set": account_set_input{
-						"disabled": true,
-					},
-				}
-
-				_ = am.gqlClient.Mutate(context.TODO(), &updateAccountMutation, updateVariables, graphql.OperationName("UpdateAccount"))
-			}
-			return nil, errors.New(ErrCodeInvalidOTP)
-		}
-	}
-
-	// insert account provider if not exist
-	if len(account.AccountProviders) == 0 {
-		acc, err := am.getCurrentProvider().GetOrCreateUserByPhone(&CreateAccountInput{
-			ID:          account.ID,
-			PhoneCode:   int(input.PhoneCode),
-			PhoneNumber: input.PhoneNumber,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		accProvider := AccountProvider{
-			Name:           acc.AccountProviders[0].Name,
-			ProviderUserID: acc.AccountProviders[0].ProviderUserID,
-			AccountID:      &account.ID,
-			Metadata:       acc.AccountProviders[0].Metadata,
-		}
-		err = am.CreateProvider(accProvider)
-		if err != nil {
-			return nil, err
-		}
-
-		account.AccountProviders = []AccountProvider{accProvider}
-	}
-
-	var updateAccountMutation struct {
-		UpdateAccount struct {
-			AffectedRows int `graphql:"affected_rows"`
-		} `graphql:"update_account(where: { id: { _eq: $id } }, _set: $_set)"`
-		CreateActivity struct {
-			AffectedRows int `graphql:"affected_rows"`
-		} `graphql:"insert_account_activity(objects: $activities)"`
-	}
-
-	activity := map[string]interface{}{
-		"account_id": account.ID,
-		"type":       ActivityLogin,
-	}
-
-	if sessionVariables != nil {
-		if ip := getRequestIPFromSession(sessionVariables); ip != nil {
-			activity["ip"] = *ip
-		}
-		if p, err := getPositionFromSession(sessionVariables); err == nil && p != nil {
-			activity["position"] = p
-		}
-	}
-
-	updateVariables := map[string]interface{}{
-		"id": graphql.String(account.ID),
-		"_set": account_set_input{
-			"verified": true,
-		},
-		"activities": []account_activity_insert_input{activity},
-	}
-
-	err = am.gqlClient.Mutate(context.TODO(), &updateAccountMutation, updateVariables, graphql.OperationName("UpdateAccount"))
-	if err != nil {
-		return nil, err
-	}
-
-	return am.EncodeToken(&account.AccountProviders[0])
 }
 
 // newActivity create an user activity model
@@ -1182,9 +811,9 @@ func (am *AccountManager) Generate2FaOTP(sessionVariables map[string]string, acc
 
 		updateVariables := map[string]interface{}{
 			"id": graphql.String(accountID),
-			"_set": account_set_input{
-				"phone_code":   pCode,
-				"phone_number": pNumber,
+			"_set": UpdateAccountInput{
+				PhoneCode:   &pCode,
+				PhoneNumber: &pNumber,
 			},
 			"activities": []account_activity_insert_input{activity},
 		}
@@ -1303,10 +932,10 @@ func (am *AccountManager) Verify2FaOTP(sessionVariables map[string]string, accou
 	if type2FA == Auth2FASms && !account.PhoneEnabled {
 
 		_, err = am.getCurrentProvider().UpdateUser(account.AccountProviders[0].ProviderUserID, UpdateAccountInput{
-			PhoneCode:    account.PhoneCode,
-			PhoneNumber:  account.PhoneNumber,
-			PhoneEnabled: true,
-			Verified:     true,
+			PhoneCode:    &account.PhoneCode,
+			PhoneNumber:  &account.PhoneNumber,
+			PhoneEnabled: getPtr(true),
+			Verified:     getPtr(true),
 		})
 
 		if err != nil {
@@ -1324,8 +953,8 @@ func (am *AccountManager) Verify2FaOTP(sessionVariables map[string]string, accou
 
 		updateVariables := map[string]interface{}{
 			"id": graphql.String(accountID),
-			"_set": account_set_input{
-				"phone_enabled": true,
+			"_set": UpdateAccountInput{
+				PhoneEnabled: getPtr(true),
 			},
 			"activities": []account_activity_insert_input{activity},
 		}
@@ -1352,4 +981,197 @@ func (am *AccountManager) Verify2FaOTP(sessionVariables map[string]string, accou
 	}
 
 	return nil
+}
+
+// PromoteAnonymousUser promotes the current anonymous user to the default user role
+func (am *AccountManager) PromoteAnonymousUser(accountID string, input *CreateAccountInput) (*Account, error) {
+
+	if accountID == "" {
+		return nil, errors.New(ErrCodeAccountNotFound)
+	}
+
+	var query struct {
+		Accounts []struct {
+			BaseAccount
+			AccountProviders []AccountProvider `graphql:"account_providers(where: $providerWhere)"`
+		} `graphql:"account(where: $where, limit: 1)"`
+	}
+
+	variables := map[string]interface{}{
+		"where": account_bool_exp{
+			"id": map[string]any{
+				"_eq": accountID,
+			},
+		},
+		"providerWhere": account_provider_bool_exp{
+			"provider_name": map[string]any{
+				"_eq": am.providerType,
+			},
+		},
+	}
+
+	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountByProvider"))
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(query.Accounts) == 0 {
+		return nil, errors.New(ErrCodeAccountNotFound)
+	}
+
+	u := query.Accounts[0]
+
+	if u.Role != am.defaultRoleAnonymous {
+		return nil, errors.New(ErrCodeAccountNotAnonymous)
+	}
+
+	providerUserID := ""
+	if len(u.AccountProviders) > 0 {
+		providerUserID = u.AccountProviders[0].ProviderUserID
+	}
+	input.ID = &u.ID
+	account, err := am.getCurrentProvider().PromoteAnonymousUser(providerUserID, input)
+	if err != nil {
+		return nil, err
+	}
+
+	var updateMutation struct {
+		UpdateAccount struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"update_account(where: $where, _set: $_set)"`
+		UpsertProviders struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"insert_account_provider(objects: $providers, on_conflict: {constraint: account_provider_pkey, update_columns: [provider_user_id, metadata]})"`
+	}
+
+	updateValues := UpdateAccountInput{
+		Email:        input.Email,
+		PhoneCode:    input.PhoneCode,
+		PhoneNumber:  input.PhoneNumber,
+		DisplayName:  input.DisplayName,
+		Verified:     input.Verified,
+		EmailEnabled: input.EmailEnabled,
+		PhoneEnabled: input.PhoneEnabled,
+		Role:         input.Role,
+	}
+	if account.Password != "" {
+		updateValues.Password = &account.Password
+	}
+
+	provider := account.AccountProviders[0]
+	provider.AccountID = &u.ID
+	mutationVariables := map[string]any{
+		"where": account_bool_exp{
+			"id": map[string]any{
+				"_eq": u.ID,
+			},
+		},
+		"_set":      updateValues,
+		"providers": []account_provider_insert_input{account_provider_insert_input(provider)},
+	}
+
+	err = am.gqlClient.Mutate(context.TODO(), &updateMutation, mutationVariables, graphql.OperationName("PromoteAnonymousAccount"))
+	if err != nil {
+		return nil, err
+	}
+
+	baseAccount := updateValues.ToBaseAccount()
+	baseAccount.ID = u.ID
+	return &Account{
+		BaseAccount:      baseAccount,
+		AccountProviders: []AccountProvider{provider},
+	}, nil
+}
+
+// DeleteUser delete user by id
+func (am *AccountManager) DeleteUser(id string, softDelete bool) error {
+	where := map[string]any{
+		"id": map[string]any{
+			"_eq": id,
+		},
+	}
+
+	if !softDelete {
+		_, err := am.deleteAccount(context.TODO(), where)
+
+		return err
+	}
+
+	_, err := am.softDeleteAccounts(context.TODO(), where, map[string]any{
+		"account_id": map[string]any{
+			"_eq": id,
+		},
+	})
+
+	return err
+}
+
+// DeleteUsers delete accounts from database
+// if softDelete mode is enabled, disable the account and remove auth providers
+func (am *AccountManager) DeleteUsers(where map[string]any, softDelete bool) (int, error) {
+
+	if !softDelete {
+		return am.deleteAccount(context.TODO(), where)
+	}
+
+	providerWhere := map[string]any{
+		"account": where,
+	}
+	return am.softDeleteAccounts(context.TODO(), where, providerWhere)
+}
+
+func (am *AccountManager) deleteAccount(ctx context.Context, where map[string]any) (int, error) {
+	var deleteMutation struct {
+		DeleteAccounts struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"delete_account(where: $where)"`
+	}
+
+	deleteVariables := map[string]any{
+		"where": account_bool_exp(where),
+	}
+
+	err := am.gqlClient.Mutate(context.TODO(), &deleteMutation, deleteVariables, graphql.OperationName("DeleteAccounts"))
+	return deleteMutation.DeleteAccounts.AffectedRows, err
+}
+
+func (am *AccountManager) softDeleteAccounts(ctx context.Context, where map[string]any, providerWhere map[string]any) (int, error) {
+
+	var deleteMutation struct {
+		UpdateAccounts struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"update_account(where: $where, _set: $_set)"`
+		DeleteAccountProviders struct {
+			AffectedRows int `graphql:"affected_rows"`
+		} `graphql:"delete_account_provider(where: $providerWhere)"`
+	}
+
+	variables := map[string]any{
+		"where":         account_bool_exp(where),
+		"providerWhere": account_provider_bool_exp(providerWhere),
+		"_set": map[string]any{
+			"verified":      false,
+			"email_enabled": false,
+			"phone_enabled": false,
+			"disabled":      true,
+		},
+	}
+
+	err := am.gqlClient.Mutate(ctx, &deleteMutation, variables, graphql.OperationName("SoftDeleteAccounts"))
+
+	return deleteMutation.UpdateAccounts.AffectedRows, err
+}
+
+func filterProvidersByType(providers []AccountProvider, providerType AuthProviderType) []AccountProvider {
+	for _, provider := range providers {
+		if provider.Name == string(providerType) {
+			return []AccountProvider{provider}
+		}
+	}
+
+	if providerType == AuthFirebase {
+		return filterProvidersByType(providers, AuthJWT)
+	}
+	return []AccountProvider{}
 }
