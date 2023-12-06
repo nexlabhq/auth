@@ -211,7 +211,7 @@ func (am *AccountManager) FindOne(where map[string]interface{}) (*Account, error
 }
 
 // CreateAccountWithProvider get or create account with provider
-func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, extraFields map[string]interface{}) (*Account, error) {
+func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, extraFields map[string]any, extraFilters map[string]any) (*Account, error) {
 
 	ctx := context.Background()
 
@@ -239,21 +239,28 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 		} `graphql:"account(where: $where, limit: 1)"`
 	}
 
-	condition := make([]map[string]interface{}, 0)
+	condition := make([]map[string]any, 0)
 
 	if !isStringPtrEmpty(input.Email) {
-		condition = append(condition, map[string]interface{}{
+		emailFilter := map[string]any{
 			"email": map[string]string{
 				"_eq": *input.Email,
 			},
 			"email_enabled": map[string]bool{
 				"_eq": true,
 			},
-		})
+		}
+
+		if len(extraFilters) > 0 {
+			for k, v := range extraFilters {
+				emailFilter[k] = v
+			}
+		}
+		condition = append(condition, emailFilter)
 	}
 
 	if !isStringPtrEmpty(input.PhoneNumber) {
-		condition = append(condition, map[string]interface{}{
+		phoneFilter := map[string]any{
 			"phone_code": map[string]any{
 				"_eq": input.PhoneCode,
 			},
@@ -263,7 +270,15 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 			"phone_enabled": map[string]bool{
 				"_eq": true,
 			},
-		})
+		}
+
+		if len(extraFilters) > 0 {
+			for k, v := range extraFilters {
+				phoneFilter[k] = v
+			}
+		}
+
+		condition = append(condition, phoneFilter)
 	}
 
 	existAccountVariables := map[string]interface{}{
