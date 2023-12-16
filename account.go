@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	firebase "firebase.google.com/go/v4"
@@ -35,6 +36,7 @@ type AccountManagerConfig struct {
 	DefaultProvider      AuthProviderType `envconfig:"DEFAULT_AUTH_PROVIDER" required:"true"`
 	DefaultRole          string           `envconfig:"DEFAULT_ROLE" required:"true"`
 	DefaultRoleAnonymous string           `envconfig:"DEFAULT_ROLE_ANONYMOUS" default:"anonymous"`
+	AutoLinkProvider     bool             `envconfig:"AUTH_AUTO_LINK_PROVIDER" default:"false"`
 }
 
 // AccountManager account business method
@@ -46,6 +48,7 @@ type AccountManager struct {
 	createFromToken      bool
 	otp                  AuthOTPConfig
 	defaultRoleAnonymous string
+	autoLinkProvider     bool
 }
 
 // NewAccountManager create new AccountManager instance
@@ -88,6 +91,7 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 		createFromToken:      config.CreateFromToken,
 		otp:                  config.OTP,
 		defaultRoleAnonymous: config.DefaultRoleAnonymous,
+		autoLinkProvider:     config.AutoLinkProvider,
 	}, nil
 }
 
@@ -496,11 +500,72 @@ func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]an
 	}
 
 	_, err = am.InsertAccount(accInsertInput)
-	if err != nil {
-		return nil, nil, err
-	}
 
-	acc.Role = am.defaultRole
+	if err != nil {
+		isEmailUniqueError := strings.Contains(err.Error(), "account_email_unique")
+		isPhoneUniqueError := strings.Contains(err.Error(), "account_phone_unique")
+
+		if !am.autoLinkProvider || am.getCurrentProvider().GetName() != AuthFirebase ||
+			len(acc.AccountProviders) == 0 ||
+			(acc.PhoneNumber == "" && acc.Email == "") ||
+			(!isEmailUniqueError && !isPhoneUniqueError) ||
+			(isEmailUniqueError && acc.Email == "") ||
+			(isPhoneUniqueError && acc.PhoneNumber == "") {
+			return nil, nil, err
+		}
+
+		// allow linking account with firebase auth provider
+		var existedAccount struct {
+			Account []BaseAccount `graphql:"account(where: $where, limit: 1)"`
+		}
+
+		where := account_bool_exp{}
+		if strings.Contains(err.Error(), "account_phone_unique") {
+			where["phone_code"] = map[string]any{
+				"_eq": acc.PhoneCode,
+			}
+			where["phone_number"] = map[string]any{
+				"_eq": acc.PhoneNumber,
+			}
+			where["phone_enabled"] = map[string]any{
+				"_eq": true,
+			}
+		} else if strings.Contains(err.Error(), "account_email_unique") {
+			where["email"] = map[string]any{
+				"_eq": acc.Email,
+			}
+			where["email_enabled"] = map[string]any{
+				"_eq": true,
+			}
+		}
+
+		for k, exp := range accountBoolExp {
+			where[k] = exp
+		}
+
+		accountVariables := map[string]any{
+			"where": where,
+		}
+
+		accountErr := am.gqlClient.Query(context.Background(), &existedAccount, accountVariables, gql.OperationName("FindAccount"))
+		if accountErr != nil || len(existedAccount.Account) == 0 {
+			return nil, nil, err
+		}
+
+		accountErr = am.CreateProvider(AccountProvider{
+			ProviderUserID: acc.AccountProviders[0].ProviderUserID,
+			Name:           acc.AccountProviders[0].Name,
+			AccountID:      &existedAccount.Account[0].ID,
+		})
+
+		if accountErr != nil {
+			return nil, nil, accountErr
+		}
+
+		acc.BaseAccount = existedAccount.Account[0]
+	} else {
+		acc.Role = am.defaultRole
+	}
 
 	return acc, claims, nil
 }
