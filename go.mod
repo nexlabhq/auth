@@ -10,7 +10,7 @@ require (
 	github.com/hgiasac/graphql-utils v0.0.0-20230815180236-643f58bf1e9f
 	github.com/stretchr/testify v1.8.4
 	github.com/ttacon/libphonenumber v1.2.1
-	golang.org/x/crypto v0.16.0
+	golang.org/x/crypto v0.17.0
 	google.golang.org/api v0.153.0
 )
 
