@@ -8,8 +8,11 @@ import (
 	"time"
 
 	firebase "firebase.google.com/go/v4"
+	"github.com/google/uuid"
 	"github.com/hasura/go-graphql-client"
 	gql "github.com/hasura/go-graphql-client"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 // AuthOTPConfig contains authentication configurations from sms otp
@@ -37,6 +40,7 @@ type AccountManagerConfig struct {
 	DefaultRole          string           `envconfig:"DEFAULT_ROLE" required:"true"`
 	DefaultRoleAnonymous string           `envconfig:"DEFAULT_ROLE_ANONYMOUS" default:"anonymous"`
 	AutoLinkProvider     bool             `envconfig:"AUTH_AUTO_LINK_PROVIDER" default:"false"`
+	Logger               *zerolog.Logger  `ignored:"true"`
 }
 
 // AccountManager account business method
@@ -49,6 +53,7 @@ type AccountManager struct {
 	otp                  AuthOTPConfig
 	defaultRoleAnonymous string
 	autoLinkProvider     bool
+	logger               zerolog.Logger
 }
 
 // NewAccountManager create new AccountManager instance
@@ -83,6 +88,11 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 		return nil, errors.New("DefaultProvider is required")
 	}
 
+	logger := log.Level(zerolog.GlobalLevel()).With().Str("component", "auth").Logger()
+	if config.Logger != nil {
+		logger = *config.Logger
+	}
+
 	return &AccountManager{
 		providers:            providers,
 		gqlClient:            config.GQLClient,
@@ -92,6 +102,7 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 		otp:                  config.OTP,
 		defaultRoleAnonymous: config.DefaultRoleAnonymous,
 		autoLinkProvider:     config.AutoLinkProvider,
+		logger:               logger,
 	}, nil
 }
 
@@ -436,10 +447,23 @@ func (am *AccountManager) CreateProvider(input AccountProvider) error {
 
 // VerifyToken validate and return provider user id
 func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]any, extraFields map[string]any) (*Account, map[string]interface{}, error) {
+	logger := am.logger.With().
+		Str("span_id", uuid.NewString()).
+		Str("name", "VerifyToken").
+		Str("provider", string(am.GetProviderName())).Logger()
+
+	logger.Trace().Str("access_token", token).
+		Interface("extra_condition", accountBoolExp).
+		Interface("extra_fields", extraFields).
+		Msg("VerifyToken")
+
 	provider, claims, err := am.getCurrentProvider().VerifyToken(token)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	logger.Trace().Interface("account_provider", provider).Interface("claims", claims).
+		Msg("findAccountByProviderUser")
 
 	acc, err := am.findAccountByProviderUser(provider.ProviderUserID, accountBoolExp)
 	if err != nil {
@@ -458,6 +482,7 @@ func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]an
 	}
 
 	// allow create account with provider info
+	logger.Trace().Interface("account_provider", provider).Msg("GetUserByID")
 	acc, err = am.getCurrentProvider().GetUserByID(provider.ProviderUserID)
 	if err != nil || (acc != nil && acc.ID != "") {
 		return acc, nil, err
@@ -465,7 +490,7 @@ func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]an
 		return nil, nil, errors.New(ErrCodeAccountNotFound)
 	}
 
-	acc, err = am.createAccountFromToken(acc, accountBoolExp, extraFields)
+	acc, err = am.createAccountFromToken(acc, accountBoolExp, extraFields, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -473,7 +498,12 @@ func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]an
 	return acc, claims, err
 }
 
-func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp map[string]any, extraFields map[string]any) (*Account, error) {
+func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp map[string]any, extraFields map[string]any, logger zerolog.Logger) (*Account, error) {
+
+	logger.Trace().Interface("account", acc).
+		Interface("extra_condition", accountBoolExp).
+		Interface("extra_fields", extraFields).
+		Msg("createAccountFromToken")
 
 	acc.ID = genID()
 	accInsertInput := map[string]interface{}{
@@ -509,11 +539,19 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 		}
 	}
 
+	logger.Trace().Interface("account_insert_input", accInsertInput).Msg("InsertAccount")
 	_, err := am.InsertAccount(accInsertInput)
 
 	if err != nil {
 		isEmailUniqueError := strings.Contains(err.Error(), "account_email_unique")
 		isPhoneUniqueError := strings.Contains(err.Error(), "account_phone_unique")
+
+		logger.Trace().
+			Interface("account_email_unique", isEmailUniqueError).
+			Interface("account_phone_unique", isPhoneUniqueError).
+			Interface("auto_link", am.autoLinkProvider).
+			Interface("account", acc).
+			Msg("Validate unique constraint and link account")
 
 		if !am.autoLinkProvider || am.getCurrentProvider().GetName() != AuthFirebase ||
 			len(acc.AccountProviders) == 0 ||
@@ -557,11 +595,20 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 			"where": where,
 		}
 
+		logger.Trace().Interface("variables", accountVariables).Msg("FindAccount")
 		accountErr := am.gqlClient.Query(context.Background(), &existedAccount, accountVariables, gql.OperationName("FindAccount"))
 		if accountErr != nil || len(existedAccount.Account) == 0 {
+			logger.Trace().
+				Interface("existing_accounts", existedAccount.Account).
+				Interface("error", accountErr).
+				Msg("FindAccountFailure")
 			return nil, err
 		}
 
+		logger.Trace().
+			Interface("existing_account", existedAccount.Account[0]).
+			Interface("providers", acc.AccountProviders).
+			Msg("CreateProvider")
 		accountErr = am.CreateProvider(AccountProvider{
 			ProviderUserID: acc.AccountProviders[0].ProviderUserID,
 			Name:           acc.AccountProviders[0].Name,

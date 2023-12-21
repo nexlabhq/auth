@@ -5,6 +5,7 @@ import (
 
 	firebase "firebase.google.com/go/v4"
 	testUtils "github.com/hgiasac/graphql-utils/test"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -44,7 +45,7 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 		},
 	}, map[string]any{
 		"disabled": false,
-	})
+	}, log.Logger)
 	assert.ErrorContains(t, err, "account_email_unique")
 
 	_, err = am.createAccountFromToken(&Account{
@@ -67,7 +68,7 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 		},
 	}, map[string]any{
 		"disabled": false,
-	})
+	}, log.Logger)
 	assert.ErrorContains(t, err, "account_email_unique")
 
 	am, err = NewAccountManager(AccountManagerConfig{
@@ -125,7 +126,7 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 		},
 	}, map[string]any{
 		"disabled": false,
-	})
+	}, log.Logger)
 	assert.ErrorContains(t, err, "account_provider_insert_zero")
 }
 
@@ -186,7 +187,7 @@ func TestAutoLinkProvider_success(t *testing.T) {
 		},
 	}, map[string]any{
 		"disabled": false,
-	})
+	}, log.Logger)
 	assert.NoError(t, err)
 	assert.Equal(t, account, result)
 }
