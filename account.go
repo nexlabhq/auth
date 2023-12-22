@@ -109,11 +109,15 @@ func NewAccountManager(config AccountManagerConfig) (*AccountManager, error) {
 // As create new account manager with target provider
 func (am AccountManager) As(providerType AuthProviderType) *AccountManager {
 	return &AccountManager{
-		providers:       am.providers,
-		gqlClient:       am.gqlClient,
-		providerType:    providerType,
-		defaultRole:     am.defaultRole,
-		createFromToken: am.createFromToken,
+		providers:            am.providers,
+		gqlClient:            am.gqlClient,
+		providerType:         providerType,
+		defaultRole:          am.defaultRole,
+		createFromToken:      am.createFromToken,
+		otp:                  am.otp,
+		defaultRoleAnonymous: am.defaultRoleAnonymous,
+		autoLinkProvider:     am.autoLinkProvider,
+		logger:               am.logger,
 	}
 }
 
@@ -447,29 +451,23 @@ func (am *AccountManager) CreateProvider(input AccountProvider) error {
 
 // VerifyToken validate and return provider user id
 func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]any, extraFields map[string]any) (*Account, map[string]interface{}, error) {
-	logger := createLogger(
-		am.logger.With().
-			Str("span_id", uuid.NewString()).
-			Str("name", "VerifyToken").
-			Str("provider", string(am.GetProviderName())).Logger(),
-	)
+	logger := am.logger.With().
+		Str("span_id", uuid.NewString()).
+		Str("name", "VerifyToken").
+		Str("provider", string(am.GetProviderName())).Logger()
 
-	logger.Trace(func(event *zerolog.Event) {
-		event.Str("access_token", token).
-			Interface("extra_condition", accountBoolExp).
-			Interface("extra_fields", extraFields).
-			Msg("VerifyToken")
-	})
+	logger.Trace().Str("access_token", token).
+		Interface("extra_condition", accountBoolExp).
+		Interface("extra_fields", extraFields).
+		Msg("VerifyToken")
 
 	provider, claims, err := am.getCurrentProvider().VerifyToken(token)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	logger.Trace(func(event *zerolog.Event) {
-		event.Interface("account_provider", provider).Interface("claims", claims).
-			Msg("findAccountByProviderUser")
-	})
+	logger.Trace().Interface("account_provider", provider).Interface("claims", claims).
+		Msg("findAccountByProviderUser")
 
 	acc, err := am.findAccountByProviderUser(provider.ProviderUserID, accountBoolExp)
 	if err != nil {
@@ -488,9 +486,7 @@ func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]an
 	}
 
 	// allow create account with provider info
-	logger.Trace(func(event *zerolog.Event) {
-		event.Interface("account_provider", provider).Msg("GetUserByID")
-	})
+	logger.Trace().Interface("account_provider", provider).Msg("GetUserByID")
 
 	acc, err = am.getCurrentProvider().GetUserByID(provider.ProviderUserID)
 	if err != nil || (acc != nil && acc.ID != "") {
@@ -507,14 +503,12 @@ func (am *AccountManager) VerifyToken(token string, accountBoolExp map[string]an
 	return acc, claims, err
 }
 
-func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp map[string]any, extraFields map[string]any, logger *loggerWrapper) (*Account, error) {
+func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp map[string]any, extraFields map[string]any, logger zerolog.Logger) (*Account, error) {
 
-	logger.Trace(func(event *zerolog.Event) {
-		event.Interface("account", acc).
-			Interface("extra_condition", accountBoolExp).
-			Interface("extra_fields", extraFields).
-			Msg("createAccountFromToken")
-	})
+	logger.Trace().Interface("account", acc).
+		Interface("extra_condition", accountBoolExp).
+		Interface("extra_fields", extraFields).
+		Msg("createAccountFromToken")
 
 	acc.ID = genID()
 	accInsertInput := map[string]interface{}{
@@ -550,22 +544,18 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 		}
 	}
 
-	logger.Trace(func(event *zerolog.Event) {
-		event.Interface("account_insert_input", accInsertInput).Msg("InsertAccount")
-	})
+	logger.Trace().Interface("account_insert_input", accInsertInput).Msg("InsertAccount")
 	_, err := am.InsertAccount(accInsertInput)
 
 	if err != nil {
 		isEmailUniqueError := strings.Contains(err.Error(), "account_email_unique")
 		isPhoneUniqueError := strings.Contains(err.Error(), "account_phone_unique")
 
-		logger.Trace(func(event *zerolog.Event) {
-			event.Interface("account_email_unique", isEmailUniqueError).
-				Interface("account_phone_unique", isPhoneUniqueError).
-				Interface("auto_link", am.autoLinkProvider).
-				Interface("account", acc).
-				Msg("Validate unique constraint and link account")
-		})
+		logger.Trace().Interface("account_email_unique", isEmailUniqueError).
+			Interface("account_phone_unique", isPhoneUniqueError).
+			Interface("auto_link", am.autoLinkProvider).
+			Interface("account", acc).
+			Msg("Validate unique constraint and link account")
 		if !am.autoLinkProvider || am.getCurrentProvider().GetName() != AuthFirebase ||
 			len(acc.AccountProviders) == 0 ||
 			(acc.PhoneNumber == "" && acc.Email == "") ||
@@ -608,26 +598,20 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 			"where": where,
 		}
 
-		logger.Trace(func(event *zerolog.Event) {
-			event.Interface("variables", accountVariables).Msg("FindAccount")
-		})
+		logger.Trace().Interface("variables", accountVariables).Msg("FindAccount")
 		accountErr := am.gqlClient.Query(context.Background(), &existedAccount, accountVariables, gql.OperationName("FindAccount"))
 		if accountErr != nil || len(existedAccount.Account) == 0 {
-			logger.Trace(func(event *zerolog.Event) {
-				event.
-					Interface("existing_accounts", existedAccount.Account).
-					Interface("error", accountErr).
-					Msg("FindAccountFailure")
-			})
+			logger.Trace().
+				Interface("existing_accounts", existedAccount.Account).
+				Interface("error", accountErr).
+				Msg("FindAccountFailure")
 			return nil, err
 		}
 
-		logger.Trace(func(event *zerolog.Event) {
-			event.
-				Interface("existing_account", existedAccount.Account[0]).
-				Interface("providers", acc.AccountProviders).
-				Msg("CreateProvider")
-		})
+		logger.Trace().
+			Interface("existing_account", existedAccount.Account[0]).
+			Interface("providers", acc.AccountProviders).
+			Msg("CreateProvider")
 		accountErr = am.CreateProvider(AccountProvider{
 			ProviderUserID: acc.AccountProviders[0].ProviderUserID,
 			Name:           acc.AccountProviders[0].Name,
