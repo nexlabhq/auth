@@ -10,7 +10,7 @@ import (
 )
 
 func TestAutoLinkProvider_failure(t *testing.T) {
-	logger := createLogger(zerolog.Nop())
+	logger := zerolog.Nop()
 	am, err := NewAccountManager(AccountManagerConfig{
 		DefaultProvider: AuthFirebase,
 		FirebaseApp:     &firebase.App{},
@@ -132,7 +132,7 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 }
 
 func TestAutoLinkProvider_success(t *testing.T) {
-	logger := createLogger(zerolog.Nop())
+	logger := zerolog.Nop()
 	am, err := NewAccountManager(AccountManagerConfig{
 		DefaultProvider: AuthFirebase,
 		FirebaseApp:     &firebase.App{},
