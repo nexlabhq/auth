@@ -1,6 +1,10 @@
 package auth
 
-import "time"
+import (
+	"time"
+
+	"github.com/rs/zerolog"
+)
 
 type AuthProviderType string
 type ActivityType string
@@ -317,4 +321,22 @@ type VerifyOTPInput struct {
 	PhoneNumber     string         `json:"phone_number"`
 	OTP             string         `json:"otp"`
 	ExtraConditions map[string]any `json:"-"`
+}
+
+// logger wrapper with trace level support
+type loggerWrapper struct {
+	logger zerolog.Logger
+}
+
+func (lw loggerWrapper) Trace(fn func(event *zerolog.Event)) {
+	if lw.logger.GetLevel() > zerolog.TraceLevel {
+		return
+	}
+
+	// docker trim trace level logs. We need to move it to debug level
+	fn(lw.logger.Debug())
+}
+
+func createLogger(logger zerolog.Logger) *loggerWrapper {
+	return &loggerWrapper{logger: logger}
 }

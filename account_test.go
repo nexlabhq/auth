@@ -5,11 +5,12 @@ import (
 
 	firebase "firebase.google.com/go/v4"
 	testUtils "github.com/hgiasac/graphql-utils/test"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAutoLinkProvider_failure(t *testing.T) {
+	logger := createLogger(zerolog.Nop())
 	am, err := NewAccountManager(AccountManagerConfig{
 		DefaultProvider: AuthFirebase,
 		FirebaseApp:     &firebase.App{},
@@ -45,7 +46,7 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 		},
 	}, map[string]any{
 		"disabled": false,
-	}, log.Logger)
+	}, logger)
 	assert.ErrorContains(t, err, "account_email_unique")
 
 	_, err = am.createAccountFromToken(&Account{
@@ -68,7 +69,7 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 		},
 	}, map[string]any{
 		"disabled": false,
-	}, log.Logger)
+	}, logger)
 	assert.ErrorContains(t, err, "account_email_unique")
 
 	am, err = NewAccountManager(AccountManagerConfig{
@@ -126,11 +127,12 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 		},
 	}, map[string]any{
 		"disabled": false,
-	}, log.Logger)
+	}, logger)
 	assert.ErrorContains(t, err, "account_provider_insert_zero")
 }
 
 func TestAutoLinkProvider_success(t *testing.T) {
+	logger := createLogger(zerolog.Nop())
 	am, err := NewAccountManager(AccountManagerConfig{
 		DefaultProvider: AuthFirebase,
 		FirebaseApp:     &firebase.App{},
@@ -187,7 +189,7 @@ func TestAutoLinkProvider_success(t *testing.T) {
 		},
 	}, map[string]any{
 		"disabled": false,
-	}, log.Logger)
+	}, logger)
 	assert.NoError(t, err)
 	assert.Equal(t, account, result)
 }
