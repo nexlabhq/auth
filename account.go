@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -446,7 +447,6 @@ func (am *AccountManager) CreateProvider(input AccountProvider) error {
 	}
 
 	return nil
-
 }
 
 // VerifyToken validate and return provider user id
@@ -556,6 +556,7 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 			Interface("auto_link", am.autoLinkProvider).
 			Interface("account", acc).
 			Msg("Validate unique constraint and link account")
+
 		if !am.autoLinkProvider || am.getCurrentProvider().GetName() != AuthFirebase ||
 			len(acc.AccountProviders) == 0 ||
 			(acc.PhoneNumber == "" && acc.Email == "") ||
@@ -567,7 +568,8 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 
 		// allow linking account with firebase auth provider
 		var existedAccount struct {
-			Account []BaseAccount `graphql:"account(where: $where, limit: 1)"`
+			Account          []BaseAccount     `graphql:"account(where: $where, limit: 1)"`
+			AccountProviders []AccountProvider `graphql:"account_provider(where: $providerWhere, limit: 1)"`
 		}
 
 		where := account_bool_exp{}
@@ -596,6 +598,14 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 
 		accountVariables := map[string]any{
 			"where": where,
+			"providerWhere": account_provider_bool_exp{
+				"provider_name": map[string]any{
+					"_eq": acc.AccountProviders[0].Name,
+				},
+				"provider_user_id": map[string]any{
+					"_eq": acc.AccountProviders[0].ProviderUserID,
+				},
+			},
 		}
 
 		logger.Trace().Interface("variables", accountVariables).Msg("FindAccount")
@@ -608,15 +618,42 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 			return nil, err
 		}
 
+		if len(existedAccount.AccountProviders) > 0 {
+			if *existedAccount.AccountProviders[0].AccountID == existedAccount.Account[0].ID {
+				acc.BaseAccount = existedAccount.Account[0]
+				return acc, nil
+			}
+
+			return nil, fmt.Errorf("provider belongs to another account")
+		}
+
 		logger.Trace().
 			Interface("existing_account", existedAccount.Account[0]).
 			Interface("providers", acc.AccountProviders).
 			Msg("CreateProvider")
-		accountErr = am.CreateProvider(AccountProvider{
-			ProviderUserID: acc.AccountProviders[0].ProviderUserID,
-			Name:           acc.AccountProviders[0].Name,
-			AccountID:      &existedAccount.Account[0].ID,
-		})
+
+		var insertProviders struct {
+			InsertProviders struct {
+				AffectedRows int `graphql:"affected_rows"`
+			} `graphql:"insert_account_provider(objects: $objects, on_conflict: {constraint: account_provider_pkey, update_columns: []})"`
+		}
+
+		insertProvidersVariables := map[string]interface{}{
+			"objects": []account_provider_insert_input{
+				account_provider_insert_input(AccountProvider{
+					ProviderUserID: acc.AccountProviders[0].ProviderUserID,
+					Name:           acc.AccountProviders[0].Name,
+					AccountID:      &existedAccount.Account[0].ID,
+				}),
+			},
+		}
+
+		accountErr = am.gqlClient.Mutate(
+			context.Background(),
+			&insertProviders,
+			insertProvidersVariables,
+			gql.OperationName("InsertAccountProvider"),
+		)
 
 		if accountErr != nil {
 			return nil, accountErr
