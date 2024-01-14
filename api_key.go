@@ -1,12 +1,14 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/http"
 	"time"
 
-	gql "github.com/hasura/go-graphql-client"
+	"github.com/hasura/go-graphql-client"
+	"github.com/hgiasac/graphql-utils/client"
 )
 
 // APIKeyGetter abstracts an API key model with getter
@@ -35,11 +37,11 @@ type api_key_bool_exp map[string]interface{}
 
 // ApiKeyAuth represents the api key authentication service
 type ApiKeyAuth struct {
-	client *gql.Client
+	client client.Client
 }
 
 // NewAPIKeyAuth create new APIKeyAuth instance
-func NewAPIKeyAuth(client *gql.Client) *ApiKeyAuth {
+func NewAPIKeyAuth(client client.Client) *ApiKeyAuth {
 	return &ApiKeyAuth{client}
 }
 
@@ -79,12 +81,17 @@ func (ak *ApiKeyAuth) VerifyCustomKey(input APIKeysGetter, apiKey string, header
 		return nil, errors.New(ErrCodeAPIKeyRequired)
 	}
 
-	builder := gql.NewBuilder().Bind("api_key(where: $where, limit: 1)", input).
+	builder := graphql.NewBuilder().Bind("api_key(where: $where, limit: 1)", input).
 		Variable("where", api_key_bool_exp{
 			"_and": andWhere,
 		})
 
-	err := builder.Query(ak.client, gql.OperationName("GetAPIKey"))
+	q, v, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	err = ak.client.Query(context.TODO(), &q, v, graphql.OperationName("GetAPIKey"))
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +120,7 @@ func (ak *ApiKeyAuth) validate(apiK *APIKey, headers http.Header, origin string)
 	ipValid := false
 	if len(apiK.AllowedIPs) > 0 {
 		if headers != nil {
-			ip := net.ParseIP(getRequestIP(headers))
+			ip := net.ParseIP(GetRequestIpFromHeader(headers))
 
 			if ip != nil {
 				for _, cidr := range apiK.AllowedIPs {

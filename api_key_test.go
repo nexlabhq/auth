@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hasura/go-graphql-client"
+	"github.com/hgiasac/graphql-utils/client"
 	"github.com/hgiasac/graphql-utils/test"
 	"github.com/stretchr/testify/assert"
 )
@@ -130,7 +130,7 @@ func TestAPIKeyValidate(t *testing.T) {
 
 func TestApiKey_Verify(t *testing.T) {
 	fixtures := []struct {
-		client   *graphql.Client
+		client   client.Client
 		inputKey string
 		header   http.Header
 		expected *APIKey

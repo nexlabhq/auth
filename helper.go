@@ -82,9 +82,26 @@ func getRequestOrigin(header http.Header) string {
 	return header.Get("X-Forwarded-Origin")
 }
 
-// getRequestIP gets a requests IP address by reading off the forwarded-for
+// GetRequestIP gets a requests IP address by reading off the forwarded-for
 // header (for proxies) and falls back to use the remote address.
-func getRequestIP(r http.Header) string {
+func GetRequestIP(r *http.Request) string {
+	ip := GetRequestIpFromHeader(r.Header)
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+
+	if ip == "" {
+		return ""
+	}
+
+	parts := strings.Split(ip, ":")
+
+	return parts[0]
+}
+
+// GetRequestIpFromHeader gets a requests IP address by reading off the forwarded-for
+// header (for proxies) and falls back to use the remote address.
+func GetRequestIpFromHeader(r http.Header) string {
 	ip := r.Get("X-Real-Ip")
 	if ip == "" {
 		ip = r.Get("X-Forwarded-For")

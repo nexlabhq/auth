@@ -16,7 +16,7 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 		DefaultProvider: AuthFirebase,
 		FirebaseApp:     &firebase.App{},
 		JWT:             &JWTAuthConfig{},
-		GQLClient: testUtils.NewMockGraphQLClient(map[string]string{
+		GQLClient: testUtils.NewMockGraphQLClientQueries(map[string]string{
 			`mutation InsertAccount($objects:[account_insert_input!]!){insert_account(objects: $objects){returning{id}}}`: `{
 				"errors": [
 					{
@@ -77,7 +77,7 @@ func TestAutoLinkProvider_failure(t *testing.T) {
 		DefaultProvider: AuthFirebase,
 		FirebaseApp:     &firebase.App{},
 		JWT:             &JWTAuthConfig{},
-		GQLClient: testUtils.NewMockGraphQLClient(map[string]string{
+		GQLClient: testUtils.NewMockGraphQLClientQueries(map[string]string{
 			`mutation InsertAccount($objects:[account_insert_input!]!){insert_account(objects: $objects){returning{id}}}`: `{
 				"errors": [
 					{
@@ -143,7 +143,7 @@ func TestAutoLinkProvider_success(t *testing.T) {
 		DefaultProvider: AuthFirebase,
 		FirebaseApp:     &firebase.App{},
 		JWT:             &JWTAuthConfig{},
-		GQLClient: testUtils.NewMockGraphQLClient(map[string]string{
+		GQLClient: testUtils.NewMockGraphQLClientQueries(map[string]string{
 			`mutation InsertAccount($objects:[account_insert_input!]!){insert_account(objects: $objects){returning{id}}}`: `{
 				"errors": [
 					{
@@ -204,7 +204,7 @@ func TestAutoLinkProvider_success(t *testing.T) {
 		DefaultProvider: AuthFirebase,
 		FirebaseApp:     &firebase.App{},
 		JWT:             &JWTAuthConfig{},
-		GQLClient: testUtils.NewMockGraphQLClient(map[string]string{
+		GQLClient: testUtils.NewMockGraphQLClientQueries(map[string]string{
 			`mutation InsertAccount($objects:[account_insert_input!]!){insert_account(objects: $objects){returning{id}}}`: `{
 				"errors": [
 					{

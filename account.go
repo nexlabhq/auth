@@ -11,7 +11,7 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"github.com/google/uuid"
 	"github.com/hasura/go-graphql-client"
-	gql "github.com/hasura/go-graphql-client"
+	"github.com/hgiasac/graphql-utils/client"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -31,7 +31,7 @@ type AuthOTPConfig struct {
 // AccountManagerConfig config options for AccountManager
 type AccountManagerConfig struct {
 	FirebaseApp *firebase.App `ignored:"true"`
-	GQLClient   *gql.Client   `ignored:"true"`
+	GQLClient   client.Client `ignored:"true"`
 	JWT         *JWTAuthConfig
 	OTP         AuthOTPConfig
 
@@ -47,7 +47,7 @@ type AccountManagerConfig struct {
 // AccountManager account business method
 type AccountManager struct {
 	providers            map[AuthProviderType]AuthProvider
-	gqlClient            *gql.Client
+	gqlClient            client.Client
 	providerType         AuthProviderType
 	defaultRole          string
 	createFromToken      bool
@@ -127,9 +127,14 @@ func (am *AccountManager) SetDefaultRole(role string) {
 	am.defaultRole = role
 }
 
-// GetDefaultRole get default role
+// GetDefaultRole get default role name
 func (am *AccountManager) GetDefaultRole() string {
 	return am.defaultRole
+}
+
+// GetAnonymousRole get the unauthorized role name
+func (am *AccountManager) GetAnonymousRole() string {
+	return am.defaultRoleAnonymous
 }
 
 // GetProviderName get provider name
@@ -201,7 +206,7 @@ func (am *AccountManager) FindAll(where map[string]interface{}) ([]Account, erro
 		"where": account_bool_exp(where),
 	}
 
-	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccounts"))
+	err := am.gqlClient.Query(context.Background(), &query, variables, graphql.OperationName("FindAccounts"))
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +223,7 @@ func (am *AccountManager) FindOne(where map[string]interface{}) (*Account, error
 		"where": account_bool_exp(where),
 	}
 
-	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccounts"))
+	err := am.gqlClient.Query(context.Background(), &query, variables, graphql.OperationName("FindAccounts"))
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +317,7 @@ func (am *AccountManager) CreateAccountWithProvider(input *CreateAccountInput, e
 		},
 	}
 
-	err := am.gqlClient.Query(ctx, &existAccount, existAccountVariables, gql.OperationName("FindExistingAccount"))
+	err := am.gqlClient.Query(ctx, &existAccount, existAccountVariables, graphql.OperationName("FindExistingAccount"))
 
 	if err != nil {
 		return nil, err
@@ -403,7 +408,7 @@ func (am *AccountManager) InsertAccount(input map[string]interface{}) (string, e
 		context.Background(),
 		&insertAccountMutation,
 		insertAccountVariables,
-		gql.OperationName("InsertAccount"),
+		graphql.OperationName("InsertAccount"),
 	)
 
 	if err != nil {
@@ -435,7 +440,7 @@ func (am *AccountManager) CreateProvider(input AccountProvider) error {
 		context.Background(),
 		&insertProviders,
 		insertProvidersVariables,
-		gql.OperationName("InsertAccountProviders"),
+		graphql.OperationName("InsertAccountProviders"),
 	)
 
 	if err != nil {
@@ -609,7 +614,7 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 		}
 
 		logger.Trace().Interface("variables", accountVariables).Msg("FindAccount")
-		accountErr := am.gqlClient.Query(context.Background(), &existedAccount, accountVariables, gql.OperationName("FindAccount"))
+		accountErr := am.gqlClient.Query(context.Background(), &existedAccount, accountVariables, graphql.OperationName("FindAccount"))
 		if accountErr != nil || len(existedAccount.Account) == 0 {
 			logger.Trace().
 				Interface("existing_accounts", existedAccount.Account).
@@ -652,7 +657,7 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 			context.Background(),
 			&insertProviders,
 			insertProvidersVariables,
-			gql.OperationName("InsertAccountProvider"),
+			graphql.OperationName("InsertAccountProvider"),
 		)
 
 		if accountErr != nil {
@@ -713,7 +718,7 @@ func (am *AccountManager) findAccountByProviderUser(userId string, accountBoolEx
 		},
 	}
 
-	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountByProvider"))
+	err := am.gqlClient.Query(context.Background(), &query, variables, graphql.OperationName("FindAccountByProvider"))
 	if err != nil {
 		return nil, err
 	}
@@ -781,7 +786,7 @@ func (am *AccountManager) ChangePassword(id string, currentPassword string, newP
 		},
 	}
 
-	err := am.gqlClient.Query(context.Background(), &query, queryVariables, gql.OperationName("GetAccountWithProvider"))
+	err := am.gqlClient.Query(context.Background(), &query, queryVariables, graphql.OperationName("GetAccountWithProvider"))
 
 	if err != nil {
 		return err
@@ -863,7 +868,7 @@ func (am *AccountManager) PromoteAnonymousUser(accountID string, input *CreateAc
 		},
 	}
 
-	err := am.gqlClient.Query(context.Background(), &query, variables, gql.OperationName("FindAccountByProvider"))
+	err := am.gqlClient.Query(context.Background(), &query, variables, graphql.OperationName("FindAccountByProvider"))
 
 	if err != nil {
 		return nil, err
