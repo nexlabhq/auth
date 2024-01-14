@@ -30,6 +30,8 @@ const (
 	ScopeEmail AuthScope = "email"
 	// profile scope is used to add the profile info into the ID token
 	ScopeProfile AuthScope = "profile"
+	// profile scope is used to add the role info into the ID token
+	ScopeRole AuthScope = "role"
 )
 
 const (
