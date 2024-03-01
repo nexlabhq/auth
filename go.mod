@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	firebase.google.com/go/v4 v4.13.0
-	github.com/dvsekhvalnov/jose2go v1.5.0
+	github.com/dvsekhvalnov/jose2go v1.6.0
 	github.com/google/uuid v1.5.0
 	github.com/hasura/go-graphql-client v0.10.1-0.20230813073105-5c080fef5b2b
 	github.com/hgiasac/graphql-utils v0.0.0-20230815180236-643f58bf1e9f
