@@ -4,7 +4,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -569,7 +568,7 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 		// allow linking account with firebase auth provider
 		var existedAccount struct {
 			Account          []BaseAccount     `graphql:"account(where: $where, limit: 1)"`
-			AccountProviders []AccountProvider `graphql:"account_provider(where: $providerWhere, limit: 1)"`
+			AccountProviders []AccountProvider `graphql:"account_provider(where: $providerWhere)"`
 		}
 
 		where := account_bool_exp{}
@@ -619,12 +618,18 @@ func (am *AccountManager) createAccountFromToken(acc *Account, accountBoolExp ma
 		}
 
 		if len(existedAccount.AccountProviders) > 0 {
-			if *existedAccount.AccountProviders[0].AccountID == existedAccount.Account[0].ID {
-				acc.BaseAccount = existedAccount.Account[0]
-				return acc, nil
+			// if *existedAccount.AccountProviders[0].AccountID == existedAccount.Account[0].ID {
+			// 	acc.BaseAccount = existedAccount.Account[0]
+			// 	return acc, nil
+			// }
+			for _, ap := range existedAccount.AccountProviders {
+				if *ap.AccountID == existedAccount.Account[0].ID {
+					acc.BaseAccount = existedAccount.Account[0]
+					return acc, nil
+				}
 			}
 
-			return nil, fmt.Errorf("provider belongs to another account")
+			// return nil, fmt.Errorf("provider belongs to another account")
 		}
 
 		logger.Trace().
