@@ -9,7 +9,8 @@ import (
 
 	jose "github.com/dvsekhvalnov/jose2go"
 	"github.com/google/uuid"
-	gql "github.com/hasura/go-graphql-client"
+	"github.com/hasura/go-graphql-client"
+	"github.com/hgiasac/graphql-utils/client"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -52,12 +53,12 @@ func (jac JWTAuthConfig) Validate() error {
 
 // JWTAuth implements the AuthProvider interface for JWT authentication
 type JWTAuth struct {
-	client *gql.Client
+	client client.Client
 	config JWTAuthConfig
 }
 
 // NewJWTAuth creates a new JWTAuth instance
-func NewJWTAuth(client *gql.Client, config JWTAuthConfig) *JWTAuth {
+func NewJWTAuth(client client.Client, config JWTAuthConfig) *JWTAuth {
 	if config.Cost == 0 {
 		config.Cost = bcrypt.DefaultCost
 	}
@@ -138,7 +139,7 @@ func (ja *JWTAuth) getUser(variables map[string]interface{}) (*Account, error) {
 		Accounts []Account `graphql:"account(where: $where, limit: 1)"`
 	}
 
-	err := ja.client.Query(ctx, &query, variables, gql.OperationName("GetAccountByEmail"))
+	err := ja.client.Query(ctx, &query, variables, graphql.OperationName("GetAccountByEmail"))
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +272,7 @@ func (ja *JWTAuth) validateTokenChecksum(userId string, checksum string) (*Accou
 		},
 	}
 
-	err := ja.client.Query(context.Background(), &query, variables, gql.OperationName("GetProviders"))
+	err := ja.client.Query(context.Background(), &query, variables, graphql.OperationName("GetProviders"))
 
 	if err != nil {
 		return nil, err
@@ -343,7 +344,7 @@ func (ja *JWTAuth) ChangePassword(uid string, newPassword string) error {
 		},
 	}
 
-	err = ja.client.Mutate(ctx, &mutation, variables, gql.OperationName("UpdateAccountPassword"))
+	err = ja.client.Mutate(ctx, &mutation, variables, graphql.OperationName("UpdateAccountPassword"))
 
 	if err != nil {
 		return err
@@ -387,7 +388,7 @@ func (ja *JWTAuth) updateProviderChecksum(uid string) error {
 		},
 	}
 
-	err := ja.client.Mutate(ctx, &mutation, variables, gql.OperationName("UpdateAccountProviders"))
+	err := ja.client.Mutate(ctx, &mutation, variables, graphql.OperationName("UpdateAccountProviders"))
 
 	if err != nil {
 		return err
@@ -438,13 +439,13 @@ func (ja *JWTAuth) signInWithPassword(where account_bool_exp, password string) (
 		"where": where,
 	}
 
-	err := ja.client.Query(context.Background(), &query, variables, gql.OperationName("GetAccount"))
+	err := ja.client.Query(context.Background(), &query, variables, graphql.OperationName("GetAccount"))
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err == nil && len(query.Accounts) == 0 {
+	if len(query.Accounts) == 0 {
 		return nil, errors.New(ErrCodeAccountNotFound)
 	}
 

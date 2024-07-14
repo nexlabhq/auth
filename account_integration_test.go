@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hasura/go-graphql-client"
+	"github.com/hgiasac/graphql-utils/client"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,7 +29,7 @@ func (t *hasuraTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return t.rt.RoundTrip(r)
 }
 
-func setupHasuraClient() *graphql.Client {
+func setupHasuraClient() client.Client {
 	httpClient := &http.Client{
 		Transport: &hasuraTransport{
 			rt: http.DefaultTransport,
@@ -94,7 +95,7 @@ func TestJWTAuthProvider(t *testing.T) {
 	}, nil)
 	assert.NoError(t, err)
 
-	acc1, claims1, err := manager.VerifyToken(token1.AccessToken, nil)
+	acc1, claims1, err := manager.VerifyToken(token1.AccessToken, nil, nil)
 	assert.Error(t, err)
 	assert.Nil(t, acc1)
 	assert.Nil(t, claims1)
@@ -124,7 +125,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 		Email:    &email,
 		Password: &password,
 		Verified: getPtr(true),
-	}, nil)
+	}, nil, nil)
 	assert.Nil(t, err)
 	assert.NotNil(t, user)
 
@@ -132,7 +133,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 		"foo": "bar",
 	}
 	doVerify := func(token string) {
-		acc, claims, err := manager.VerifyToken(token, nil)
+		acc, claims, err := manager.VerifyToken(token, nil, nil)
 		assert.Nil(t, err)
 
 		assert.Equal(t, user.ID, acc.ID)
@@ -147,7 +148,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	// test token expired
 	time.Sleep(3 * time.Second)
 
-	_, _, err = manager.VerifyToken(token1.AccessToken, nil)
+	_, _, err = manager.VerifyToken(token1.AccessToken, nil, nil)
 	assert.EqualError(t, err, ErrCodeTokenExpired)
 
 	newToken1, err := manager.RefreshToken(token1.RefreshToken, NewTokenClaims(testClaims))
@@ -158,7 +159,7 @@ func TestJWTAuthProviderChecksum(t *testing.T) {
 	err = manager.ChangePassword(user.ID, password, newPassword, false)
 	assert.Nil(t, err)
 
-	_, _, err = manager.VerifyToken(newToken1.AccessToken, nil)
+	_, _, err = manager.VerifyToken(newToken1.AccessToken, nil, nil)
 	assert.EqualError(t, err, ErrCodeTokenExpired)
 
 	userAfterChanged, err := manager.FindAccountByID(user.ID)
@@ -221,7 +222,7 @@ func TestFirebaseAuthProvider(t *testing.T) {
 	idToken, err := getFirebaseIdToken(customToken.AccessToken)
 	assert.NoError(t, err)
 
-	acc1, _, err := manager.VerifyToken(idToken)
+	acc1, _, err := manager.VerifyToken(idToken, nil, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, user1.ID, acc1.AccountProviders[0].ProviderUserID)
 
@@ -266,11 +267,17 @@ func TestJWTAuthOTP(t *testing.T) {
 
 	phoneNumber := "0900000000"
 
-	otp := manager.GenerateOTP(nil, 84, phoneNumber)
+	otp := manager.GenerateOTP(nil, GenerateOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+	})
 	assert.Equal(t, "", otp.Error)
 	assert.Equal(t, 6, len(otp.Code))
 
-	otp2 := manager.GenerateOTP(nil, 84, phoneNumber)
+	otp2 := manager.GenerateOTP(nil, GenerateOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+	})
 	assert.Equal(t, ErrCodeOTPAlreadySent, otp2.Error)
 
 	tok1, err := manager.VerifyOTP(nil, VerifyOTPInput{
@@ -298,7 +305,10 @@ func TestJWTAuthOTP(t *testing.T) {
 	assert.NoError(t, err)
 
 	// test failure otp
-	opt4 := manager.GenerateOTP(nil, 84, phoneNumber)
+	opt4 := manager.GenerateOTP(nil, GenerateOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+	})
 	assert.Equal(t, "", opt4.Error)
 	assert.Equal(t, 6, len(opt4.Code))
 
@@ -323,7 +333,10 @@ func TestJWTAuthOTP(t *testing.T) {
 	})
 	assert.EqualError(t, err, ErrCodeInvalidOTP)
 
-	otp5 := manager.GenerateOTP(nil, 84, phoneNumber)
+	otp5 := manager.GenerateOTP(nil, GenerateOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+	})
 	assert.Equal(t, ErrCodeAccountTemporarilyLocked, otp5.Error)
 
 	assert.EqualError(t, err, ErrCodeInvalidOTP)
@@ -336,7 +349,10 @@ func TestJWTAuthOTP(t *testing.T) {
 	})
 	assert.EqualError(t, err, ErrCodeInvalidOTP)
 
-	otp6 := manager.GenerateOTP(nil, 84, phoneNumber)
+	otp6 := manager.GenerateOTP(nil, GenerateOTPInput{
+		PhoneCode:   84,
+		PhoneNumber: phoneNumber,
+	})
 	assert.Equal(t, ErrCodeAccountDisabled, otp6.Error)
 	_, err = manager.VerifyOTP(nil, VerifyOTPInput{
 		PhoneCode:   84,

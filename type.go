@@ -8,6 +8,15 @@ type AuthProviderType string
 type ActivityType string
 type Auth2FAType string
 
+type Role string
+
+const (
+	RoleBackend   Role = "backend"
+	RoleModerator Role = "moderator"
+	RoleUser      Role = "user"
+	RoleCustomer  Role = "customer"
+)
+
 // AuthScope represents the OAuth Scopes specification
 // https://oauth.net/2/scope/
 type AuthScope string
@@ -21,6 +30,8 @@ const (
 	ScopeEmail AuthScope = "email"
 	// profile scope is used to add the profile info into the ID token
 	ScopeProfile AuthScope = "profile"
+	// profile scope is used to add the role info into the ID token
+	ScopeRole AuthScope = "role"
 )
 
 const (
@@ -39,15 +50,24 @@ const (
 
 	Auth2FASms Auth2FAType = "sms"
 
-	HasuraClaims        = "https://hasura.io/jwt/claims"
-	XHasuraDefaultRole  = "x-hasura-default-role"
-	XHasuraAllowedRoles = "x-hasura-allowed-roles"
-	XHasuraUserID       = "x-hasura-user-id"
-	XHasuraUserEmail    = "x-hasura-user-email"
-	XHasuraDisplayName  = "x-hasura-display-name"
-	XHasuraRequestIP    = "x-hasura-request-ip"
-	XHasuraLatitude     = "x-hasura-latitude"
-	XHasuraLongitude    = "x-hasura-longitude"
+	HasuraClaims          = "https://hasura.io/jwt/claims"
+	XHasuraDefaultRole    = "x-hasura-default-role"
+	XHasuraAllowedRoles   = "x-hasura-allowed-roles"
+	XHasuraUserID         = "x-hasura-user-id"
+	XHasuraUserEmail      = "x-hasura-user-email"
+	XHasuraDisplayName    = "x-hasura-display-name"
+	XHasuraRequestIP      = "x-hasura-request-ip"
+	XHasuraLatitude       = "x-hasura-latitude"
+	XHasuraLongitude      = "x-hasura-longitude"
+	XHasuraGroupIDs       = "x-hasura-group-ids"
+	XCoreAPIKey           = "x-core-api-key"
+	XHasuraAcceptLanguage = "x-hasura-accept-language"
+	XHasuraPhoneCode      = "x-hasura-phone-code"
+	XHasuraPhoneNumber    = "x-hasura-phone-number"
+	XHasuraFirstName      = "x-hasura-first-name"
+	XHasuraLastName       = "x-hasura-last-name"
+	XHasuraAvatarURL      = "x-hasura-avatar-url"
+	XHasuraPermissions    = "x-hasura-permissions"
 
 	OTPTestCodeName = "test_code"
 )
