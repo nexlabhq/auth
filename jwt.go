@@ -445,7 +445,7 @@ func (ja *JWTAuth) signInWithPassword(where account_bool_exp, password string) (
 		return nil, err
 	}
 
-	if err == nil && len(query.Accounts) == 0 {
+	if len(query.Accounts) == 0 {
 		return nil, errors.New(ErrCodeAccountNotFound)
 	}
 

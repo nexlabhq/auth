@@ -979,7 +979,7 @@ func (am *AccountManager) DeleteUsers(where map[string]any, softDelete bool) (in
 	return am.softDeleteAccounts(context.TODO(), where, providerWhere)
 }
 
-func (am *AccountManager) deleteAccount(ctx context.Context, where map[string]any) (int, error) {
+func (am *AccountManager) deleteAccount(_ context.Context, where map[string]any) (int, error) {
 	var deleteMutation struct {
 		DeleteAccounts struct {
 			AffectedRows int `graphql:"affected_rows"`
