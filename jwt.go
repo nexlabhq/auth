@@ -27,17 +27,17 @@ type jwtPayload struct {
 }
 
 type JWTAuthConfig struct {
-	Cost              int           `envconfig:"JWT_HASH_COST" default:"10"`
-	SessionKey        string        `envconfig:"SESSION_KEY"`
-	TTL               time.Duration `envconfig:"SESSION_TTL" default:"1h"`
-	RefreshTTL        time.Duration `envconfig:"SESSION_REFRESH_TTL" default:"0ms"`
-	Issuer            string        `envconfig:"JWT_ISSUER"`
-	Algorithm         string        `envconfig:"JWT_ALGORITHM" default:"HS256"`
-	HasChecksum       bool          `envconfig:"JWT_CHECKSUM" default:"false"`
-	ChecksumLength    int           `envconfig:"JWT_CHECKSUM_LENGTH" default:"8"`
-	LoginLimit        uint          `envconfig:"JWT_LOGIN_LIMIT" default:"5"`
-	LoginLockLimit    uint          `envconfig:"JWT_DISABLE_LIMIT" default:"15"`
-	LoginLockDuration time.Duration `envconfig:"JWT_LOCK_DURATION" default:"10m"`
+	Cost              int           `envconfig:"JWT_HASH_COST" env:"JWT_HASH_COST" default:"10"`
+	SessionKey        string        `envconfig:"SESSION_KEY" env:"SESSION_KEY" default:""`
+	TTL               time.Duration `envconfig:"SESSION_TTL" env:"SESSION_TTL" default:"1h"`
+	RefreshTTL        time.Duration `envconfig:"SESSION_REFRESH_TTL" env:"SESSION_REFRESH_TTL" default:"0ms"`
+	Issuer            string        `envconfig:"JWT_ISSUER" env:"JWT_ISSUER" default:""`
+	Algorithm         string        `envconfig:"JWT_ALGORITHM" env:"JWT_ALGORITHM" default:"HS256"`
+	HasChecksum       bool          `envconfig:"JWT_CHECKSUM" env:"JWT_CHECKSUM" default:"false"`
+	ChecksumLength    int           `envconfig:"JWT_CHECKSUM_LENGTH" env:"JWT_CHECKSUM_LENGTH" default:"8"`
+	LoginLimit        uint          `envconfig:"JWT_LOGIN_LIMIT" env:"JWT_LOGIN_LIMIT" default:"5"`
+	LoginLockLimit    uint          `envconfig:"JWT_DISABLE_LIMIT" env:"JWT_DISABLE_LIMIT" default:"15"`
+	LoginLockDuration time.Duration `envconfig:"JWT_LOCK_DURATION" env:"JWT_LOCK_DURATION" default:"10m"`
 }
 
 func (jac JWTAuthConfig) Validate() error {

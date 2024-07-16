@@ -18,30 +18,30 @@ import (
 
 // AuthOTPConfig contains authentication configurations from sms otp
 type AuthOTPConfig struct {
-	Enabled           bool          `envconfig:"AUTH_OTP_ENABLED"`
-	OTPLength         uint          `envconfig:"AUTH_OTP_LENGTH" default:"6"`
-	LoginLimit        uint          `envconfig:"AUTH_OTP_LOGIN_LIMIT" default:"3"`
-	LoginDisableLimit uint          `envconfig:"AUTH_OTP_DISABLE_LIMIT" default:"9"`
-	LoginLockDuration time.Duration `envconfig:"AUTH_OTP_LOCK_DURATION" default:"10m"`
-	TTL               time.Duration `envconfig:"AUTH_OTP_TTL" default:"60s"`
-	DevMode           bool          `envconfig:"AUTH_OTP_DEV" default:"false"`
-	DevOTPCode        string        `envconfig:"AUTH_OTP_DEV_CODE" default:"123456"`
+	Enabled           bool          `envconfig:"AUTH_OTP_ENABLED" env:"AUTH_OTP_ENABLED" default:"false"`
+	OTPLength         uint          `envconfig:"AUTH_OTP_LENGTH" env:"AUTH_OTP_LENGTH" default:"6"`
+	LoginLimit        uint          `envconfig:"AUTH_OTP_LOGIN_LIMIT" env:"AUTH_OTP_LOGIN_LIMIT" default:"3"`
+	LoginDisableLimit uint          `envconfig:"AUTH_OTP_DISABLE_LIMIT" env:"AUTH_OTP_DISABLE_LIMIT" default:"9"`
+	LoginLockDuration time.Duration `envconfig:"AUTH_OTP_LOCK_DURATION" env:"AUTH_OTP_LOCK_DURATION" default:"10m"`
+	TTL               time.Duration `envconfig:"AUTH_OTP_TTL" env:"AUTH_OTP_TTL" default:"60s"`
+	DevMode           bool          `envconfig:"AUTH_OTP_DEV" env:"AUTH_OTP_DEV" default:"false"`
+	DevOTPCode        string        `envconfig:"AUTH_OTP_DEV_CODE" env:"AUTH_OTP_DEV_CODE" default:"123456"`
 }
 
 // AccountManagerConfig config options for AccountManager
 type AccountManagerConfig struct {
-	FirebaseApp *firebase.App `ignored:"true"`
-	GQLClient   client.Client `ignored:"true"`
+	FirebaseApp *firebase.App `ignored:"true" kong:"-"`
+	GQLClient   client.Client `ignored:"true" kong:"-"`
 	JWT         *JWTAuthConfig
 	OTP         AuthOTPConfig
 
-	CreateFromToken      bool             `envconfig:"AUTH_CREATE_FROM_TOKEN" default:"false"`
-	Enabled2FA           bool             `envconfig:"AUTH_2FA_ENABLED"`
-	DefaultProvider      AuthProviderType `envconfig:"DEFAULT_AUTH_PROVIDER" required:"true"`
-	DefaultRole          string           `envconfig:"DEFAULT_ROLE" required:"true"`
-	DefaultRoleAnonymous string           `envconfig:"DEFAULT_ROLE_ANONYMOUS" default:"anonymous"`
-	AutoLinkProvider     bool             `envconfig:"AUTH_AUTO_LINK_PROVIDER" default:"false"`
-	Logger               *zerolog.Logger  `ignored:"true"`
+	CreateFromToken      bool             `envconfig:"AUTH_CREATE_FROM_TOKEN" env:"AUTH_CREATE_FROM_TOKEN" default:"false"`
+	Enabled2FA           bool             `envconfig:"AUTH_2FA_ENABLED" env:"AUTH_2FA_ENABLED" default:"false"`
+	DefaultProvider      AuthProviderType `envconfig:"DEFAULT_AUTH_PROVIDER" env:"DEFAULT_AUTH_PROVIDER" required:"true"`
+	DefaultRole          string           `envconfig:"DEFAULT_ROLE" env:"DEFAULT_ROLE" required:"true"`
+	DefaultRoleAnonymous string           `envconfig:"DEFAULT_ROLE_ANONYMOUS" env:"DEFAULT_ROLE_ANONYMOUS" default:"anonymous"`
+	AutoLinkProvider     bool             `envconfig:"AUTH_AUTO_LINK_PROVIDER" env:"AUTH_AUTO_LINK_PROVIDER" default:"false"`
+	Logger               *zerolog.Logger  `ignored:"true" kong:"-"`
 }
 
 // AccountManager account business method
