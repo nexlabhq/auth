@@ -30,10 +30,10 @@ type AuthOTPConfig struct {
 
 // AccountManagerConfig config options for AccountManager
 type AccountManagerConfig struct {
-	FirebaseApp *firebase.App `ignored:"true" kong:"-"`
-	GQLClient   client.Client `ignored:"true" kong:"-"`
-	JWT         *JWTAuthConfig
-	OTP         AuthOTPConfig
+	FirebaseApp *firebase.App  `ignored:"true" kong:"-"`
+	GQLClient   client.Client  `ignored:"true" kong:"-"`
+	JWT         *JWTAuthConfig `embed:""`
+	OTP         AuthOTPConfig  `embed:""`
 
 	CreateFromToken      bool             `envconfig:"AUTH_CREATE_FROM_TOKEN" env:"AUTH_CREATE_FROM_TOKEN" default:"false"`
 	Enabled2FA           bool             `envconfig:"AUTH_2FA_ENABLED" env:"AUTH_2FA_ENABLED" default:"false"`
