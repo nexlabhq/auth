@@ -289,6 +289,8 @@ type AuthProvider interface {
 	ChangePassword(uid string, newPassword string) error
 	SignInWithEmailAndPassword(email string, password string) (*Account, error)
 	SignInWithPhoneAndPassword(phoneCode int, phoneNumber string, password string) (*Account, error)
+	SignInByPhoneAndPasswordWithExtraFields(phoneCode int, phoneNumber string, password string, extraFields map[string]any) (*Account, error)
+	SignInByEmailAndPasswordWithExtraFields(email string, password string, extraFields map[string]any) (*Account, error)
 }
 
 // AccessTokenOption the extensible interface for token encoding

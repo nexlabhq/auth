@@ -737,12 +737,20 @@ func (am *AccountManager) SignInWithEmailAndPassword(email string, password stri
 	return am.getCurrentProvider().SignInWithEmailAndPassword(email, password)
 }
 
+func (am *AccountManager) SignInByEmailAndPasswordWithExtraFields(email string, password string, extraFields map[string]any) (*Account, error) {
+	return am.getCurrentProvider().SignInByEmailAndPasswordWithExtraFields(email, password, extraFields)
+}
+
 func (am *AccountManager) VerifyPassword(providerUserID string, password string) error {
 	return am.getCurrentProvider().VerifyPassword(providerUserID, password)
 }
 
 func (am *AccountManager) SignInWithPhoneAndPassword(phoneCode int, phoneNumber string, password string) (*Account, error) {
 	return am.getCurrentProvider().SignInWithPhoneAndPassword(phoneCode, phoneNumber, password)
+}
+
+func (am *AccountManager) SignInByPhoneAndPasswordWithExtraFields(phoneCode int, phoneNumber string, password string, extraFields map[string]any) (*Account, error) {
+	return am.getCurrentProvider().SignInByPhoneAndPasswordWithExtraFields(phoneCode, phoneNumber, password, extraFields)
 }
 
 func (am *AccountManager) EncodeToken(cred *AccountProvider, scopes []AuthScope, options ...AccessTokenOption) (*AccessToken, error) {
