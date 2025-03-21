@@ -233,6 +233,14 @@ func (fa *FirebaseAuth) SignInWithPhoneAndPassword(phoneCode int, phoneNumber st
 	return nil, errors.New(ErrCodeUnsupported)
 }
 
+func (fa *FirebaseAuth) SignInByEmailAndPasswordWithExtraFields(email string, password string, extraFields map[string]any) (*Account, error) {
+	return nil, errors.New(ErrCodeUnsupported)
+}
+
+func (fa *FirebaseAuth) SignInByPhoneAndPasswordWithExtraFields(phoneCode int, phoneNumber string, password string, extraFields map[string]any) (*Account, error) {
+	return nil, errors.New(ErrCodeUnsupported)
+}
+
 func (fa *FirebaseAuth) VerifyPassword(providerUserId string, password string) error {
 	return errors.New(ErrCodeUnsupported)
 }

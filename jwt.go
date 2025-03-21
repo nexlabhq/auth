@@ -411,6 +411,25 @@ func (ja *JWTAuth) SignInWithEmailAndPassword(email string, password string) (*A
 	}, password)
 }
 
+func (ja *JWTAuth) SignInByEmailAndPasswordWithExtraFields(email string, password string, extraFields map[string]any) (*Account, error) {
+	accountFilter := account_bool_exp{
+		"email": map[string]string{
+			"_eq": email,
+		},
+		"email_enabled": map[string]bool{
+			"_eq": true,
+		},
+	}
+
+	if len(extraFields) > 0 {
+		for k, v := range extraFields {
+			accountFilter[k] = v
+		}
+	}
+
+	return ja.signInWithPassword(accountFilter, password)
+}
+
 func (ja *JWTAuth) SignInWithPhoneAndPassword(phoneCode int, phoneNumber string, password string) (*Account, error) {
 	return ja.signInWithPassword(account_bool_exp{
 		"phone_code": map[string]int{
@@ -423,6 +442,28 @@ func (ja *JWTAuth) SignInWithPhoneAndPassword(phoneCode int, phoneNumber string,
 			"_eq": true,
 		},
 	}, password)
+}
+
+func (ja *JWTAuth) SignInByPhoneAndPasswordWithExtraFields(phoneCode int, phoneNumber string, password string, extraFields map[string]any) (*Account, error) {
+	accountFilter := account_bool_exp{
+		"phone_code": map[string]int{
+			"_eq": phoneCode,
+		},
+		"phone_number": map[string]string{
+			"_eq": phoneNumber,
+		},
+		"phone_enabled": map[string]bool{
+			"_eq": true,
+		},
+	}
+
+	if len(extraFields) > 0 {
+		for k, v := range extraFields {
+			accountFilter[k] = v
+		}
+	}
+
+	return ja.signInWithPassword(accountFilter, password)
 }
 
 func (ja *JWTAuth) comparePassword(hashedPassword, password string) error {
