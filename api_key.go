@@ -55,7 +55,7 @@ func (ak *ApiKeyAuth) Verify(apiKey string, headers http.Header) (*APIKey, error
 func (ak *ApiKeyAuth) VerifyCustomKey(input APIKeysGetter, apiKey string, headers http.Header) (*APIKey, error) {
 
 	// get either api key header or web domain to authorize the application
-	var andWhere []map[string]any
+	andWhere := []map[string]any{{"disabled": map[string]any{"_eq": false}}}
 	origin := getRequestOrigin(headers)
 	if isWebBrowserAgent(headers.Get("User-Agent")) {
 		if origin == "" {
